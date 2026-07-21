@@ -224,6 +224,33 @@ The 5-byte `'b'` command is `'b', value, ?, ?, subcode`, and the dialog reveals 
 
 Plus "Set time" H/M/S and "Set the Power-on display time".
 
+### File upload — envelope decoded, flow control needs the device (2026-07-21)
+
+The "Upload file(s)" button (ID 1014, handler VA 0x408dc0) spawns a **background thread**
+(`AfxBeginThread` → VA 0x408ec0). The thread connects, sends the handshake, shows *"Asking for
+device configuration"* and **waits for a reply** (recv), then sends the file in **chunks** via the
+chunk-sender at **VA 0x408b70**.
+
+Chunk envelope (fully decoded):
+```
+"B2DDDDED"       8 B header   (VA 0x40e22c)
+<3-byte length>  mixed radix, ASCII-offset (bytes 0x6a / 0x63 base)
+<chunk data>
+"C0EEBDF9E5B7"   12 B trailer (VA 0x40dd44)      → send(len + 0x17)
+```
+`"B2DDDDED"+"C0EEBDF9E5B7"` is the same 20-byte signature appended to `房子.BIN`/`马里奥.BIN`.
+
+**Why it can't be finished from the binary alone:** the 3-byte length **overflows for large sizes**
+(a 9 MB file → length 0), so files go in **many small chunks**, almost certainly with **per-chunk
+acks** (the thread interleaves `recv`); and the **device-config reply** after the handshake exists
+only on the wire. Both must be **observed on the device** — `tools/re/probe_fan.py` captures the
+handshake reply as step one. `FanClient.UploadAsync` stays throwing until then: a malformed chunked
+stream could wedge the device's "upload in progress" flag (set at VA 0x408e09).
+
+The **Wi-Fi config** rename (command `r` → dialog 140 → Apply at VA 0x40a9d0) is the same shape:
+send `r`, the device enters config mode, then the new SSID/password go over the wire — also
+device-in-the-loop to finish safely.
+
 ---
 
 ## FINDINGS — from the factory SD-card backup (2026-07-16)
