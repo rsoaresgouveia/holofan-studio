@@ -39,7 +39,13 @@ install -m 0644 "$REPO_DIR/deploy/pi/holofan-update.service" /etc/systemd/system
 install -m 0644 "$REPO_DIR/deploy/pi/holofan-update.timer"   /etc/systemd/system/holofan-update.timer
 
 systemctl daemon-reload
-systemctl enable --now holofan.service        # start now + on every boot
+
+# Pull the image in the FOREGROUND first (visible progress). The first pull on a
+# slow Pi takes minutes; doing it here keeps `enable --now` from blocking/timing out.
+echo "==> Pulling the image (first time can take a few minutes on a Pi)…"
+( cd "$APP_DIR" && docker compose pull ) || echo "   pull failed — check GHCR package is public; will retry on the timer"
+
+systemctl enable --now holofan.service        # start now + on every boot (image already local -> instant)
 systemctl enable --now holofan-update.timer   # update/watchdog every 15 min
 
 echo
