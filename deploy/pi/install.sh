@@ -22,6 +22,17 @@ mkdir -p "$APP_DIR"
 install -m 0644 "$REPO_DIR/docker-compose.pi.yml" "$APP_DIR/docker-compose.yml"
 install -m 0755 "$REPO_DIR/deploy/pi/holofan-update.sh" "$APP_DIR/holofan-update.sh"
 
+# Record the git checkout so the 15-min update can `git pull` it too (if this is a git install).
+if [[ -d "$REPO_DIR/.git" ]]; then
+  echo "HOLOFAN_CLONE_DIR=$REPO_DIR" > /etc/default/holofan
+  # The timer runs as root but the clone is owned by your user; let root's git trust it.
+  git config --global --add safe.directory "$REPO_DIR"
+  echo "==> git checkout at $REPO_DIR — updates will git pull it"
+else
+  : > /etc/default/holofan
+  echo "==> not a git checkout — updates will refresh the image only"
+fi
+
 echo "==> Installing systemd units"
 install -m 0644 "$REPO_DIR/deploy/pi/holofan.service"        /etc/systemd/system/holofan.service
 install -m 0644 "$REPO_DIR/deploy/pi/holofan-update.service" /etc/systemd/system/holofan-update.service

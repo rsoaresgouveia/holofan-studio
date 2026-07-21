@@ -148,9 +148,13 @@ sudo bash deploy/pi/install.sh
 
 What it sets up:
 - **`holofan.service`** — `docker compose up -d` on boot (auto-start when the Pi powers on).
-- **`holofan-update.timer`** → **`holofan-update.service`** — every 15 min: `docker compose pull`
-  then `up -d`. A no-op when nothing changed, so it both **auto-updates** and acts as a
-  **watchdog** (brings the app back if it was down).
+- **`holofan-update.timer`** → **`holofan-update.service`** — every 15 min: `git pull` the
+  checkout (so compose/deploy files stay current), then `docker compose pull` + `up -d`. A no-op
+  when nothing changed, so it both **auto-updates** and acts as a **watchdog** (brings the app
+  back if it was down).
+
+> Installed from a `git clone`, updates pull both the **code** and the **image**. The installer
+> records the checkout path in `/etc/default/holofan` and marks it safe for root's git.
 
 Check them:
 
