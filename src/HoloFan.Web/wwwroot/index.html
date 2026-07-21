@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HoloFan Studio — LED hologram fan converter</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌀</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🌀</span>
+      <div>
+        <h1>HoloFan Studio</h1>
+        <p>Turn any video into a clip your LED “hologram” fan can play.</p>
+      </div>
+    </div>
+    <a class="ghost-link" href="https://github.com/rsoaresgouveia" target="_blank" rel="noopener">source</a>
+  </header>
+
+  <main>
+    <!-- Step 1: upload -->
+    <section id="dropzone" class="dropzone">
+      <input type="file" id="fileInput" accept="video/*" hidden />
+      <div class="dropzone-inner">
+        <div class="dropzone-icon">🎞️</div>
+        <p><strong>Drop a video here</strong> or <button type="button" id="browseBtn" class="link-btn">browse</button></p>
+        <p class="muted">MP4, MOV, WebM, GIF… up to 500&nbsp;MB</p>
+      </div>
+    </section>
+
+    <!-- Step 2: editor -->
+    <section id="editor" class="editor hidden">
+      <div class="stage">
+        <div class="canvas-wrap">
+          <canvas id="editorCanvas" width="640" height="640"></canvas>
+          <p class="hint">Drag to reposition · scroll or use <em>Zoom</em> to frame the circle</p>
+        </div>
+
+        <aside class="preview-col">
+          <h2>Fan preview</h2>
+          <div class="fan-frame">
+            <canvas id="previewCanvas" width="260" height="260"></canvas>
+          </div>
+          <p class="muted small">This is the round area the blades actually paint.</p>
+          <dl class="meta" id="sourceMeta"></dl>
+        </aside>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <h3>Fan</h3>
+          <label>Output format
+            <select id="outputFormat">
+              <option value="bin">.bin — native, straight to the SD card</option>
+              <option value="mp4">MP4 — preview / vendor tool</option>
+            </select>
+          </label>
+          <label>Model preset
+            <select id="preset"></select>
+          </label>
+          <label>Output size (px)
+            <input type="number" id="outputSize" min="16" max="2048" step="2" value="512" />
+          </label>
+          <label>Frame rate (fps)
+            <input type="number" id="fps" min="1" max="120" value="30" />
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3>Framing</h3>
+          <label>Zoom <span class="val" id="zoomVal"></span>
+            <input type="range" id="zoom" min="0" max="100" value="0" />
+          </label>
+          <div class="row">
+            <button type="button" id="centerBtn" class="btn-mini">Center</button>
+            <button type="button" id="fitBtn" class="btn-mini">Fit</button>
+          </div>
+          <label class="checkbox">
+            <input type="checkbox" id="circularMask" checked /> Circular mask (round hologram)
+          </label>
+          <label>Outside colour
+            <input type="color" id="background" value="#000000" />
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3>Timing</h3>
+          <label>Speed <span class="val" id="speedVal">1.0×</span>
+            <input type="range" id="speed" min="0.1" max="8" step="0.1" value="1" />
+          </label>
+          <label>Preview frame at (s) <span class="val" id="scrubVal">0.0</span>
+            <input type="range" id="scrub" min="0" max="0" step="0.1" value="0" />
+          </label>
+          <div class="row">
+            <label>Trim start (s)<input type="number" id="trimStart" min="0" step="0.1" placeholder="0" /></label>
+            <label>Trim end (s)<input type="number" id="trimEnd" min="0" step="0.1" placeholder="end" /></label>
+          </div>
+        </div>
+
+        <details class="control-group span">
+          <summary><h3>Colour (advanced)</h3></summary>
+          <div class="sliders">
+            <label>Brightness <span class="val" id="brightnessVal">0</span>
+              <input type="range" id="brightness" min="-1" max="1" step="0.05" value="0" />
+            </label>
+            <label>Contrast <span class="val" id="contrastVal">1.0</span>
+              <input type="range" id="contrast" min="0" max="3" step="0.05" value="1" />
+            </label>
+            <label>Saturation <span class="val" id="saturationVal">1.0</span>
+              <input type="range" id="saturation" min="0" max="3" step="0.05" value="1" />
+            </label>
+          </div>
+        </details>
+      </div>
+
+      <div class="actionbar">
+        <button type="button" id="resetBtn" class="btn-secondary">Start over</button>
+        <button type="button" id="convertBtn" class="btn-primary">Convert for fan ✨</button>
+      </div>
+
+      <div id="result" class="result hidden">
+        <div class="progress-wrap">
+          <div class="progress-bar"><span id="progressFill"></span></div>
+          <span id="progressLabel" class="muted small"></span>
+        </div>
+        <div id="resultReady" class="result-ready hidden">
+          <video id="resultVideo" controls loop muted playsinline></video>
+          <a id="downloadLink" class="btn-primary" download>Download MP4</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live control over the fan's own WiFi protocol. Independent of the converter:
+         it must work with no video loaded, so it lives outside the editor section. -->
+    <section class="control-group span fan-panel">
+        <div class="fan-head">
+          <h3>Fan remote <span class="muted small">— join the fan's “3DCircle_…” WiFi first</span></h3>
+          <div class="fan-conn">
+            <span id="fanDot" class="dot"></span>
+            <span id="fanState" class="small muted">Unconnected</span>
+            <button type="button" id="fanConnect" class="btn-mini">Connect</button>
+          </div>
+        </div>
+
+        <div class="fan-grid" id="fanGrid">
+          <button type="button" class="fan-btn" data-cmd="Previous">⏮ Last one</button>
+          <button type="button" class="fan-btn" data-cmd="PlayPause">⏯ Play/Pause</button>
+          <button type="button" class="fan-btn" data-cmd="Next">⏭ Next one</button>
+          <button type="button" class="fan-btn" data-cmd="ListLoop">🔁 List loop</button>
+          <button type="button" class="fan-btn" data-cmd="SingleLoop">🔂 Single loop</button>
+          <button type="button" class="fan-btn" data-cmd="Power">⏻ On/Off</button>
+          <button type="button" class="fan-btn" data-cmd="BrightnessDown">🔅 Brightness−</button>
+          <button type="button" class="fan-btn" data-cmd="BrightnessUp">🔆 Brightness+</button>
+          <button type="button" class="fan-btn" data-cmd="RotateCcw">↺ CCW adjust</button>
+          <button type="button" class="fan-btn" data-cmd="RotateCw">↻ CW adjust</button>
+          <button type="button" class="fan-btn" data-cmd="WifiConfig">📶 Wi-Fi config</button>
+          <button type="button" class="fan-btn danger" data-cmd="ClearCache" data-destructive="1">🧹 Clear cache</button>
+          <button type="button" class="fan-btn danger" data-cmd="FormatDisk" data-destructive="1">☠ Format disk</button>
+        </div>
+
+        <details class="clock-block">
+          <summary><strong>Clock</strong> <span class="muted small">— undocumented; found in the vendor binary</span></summary>
+          <div class="row clock-row">
+            <label>Clock
+              <select id="clockEnabled"><option value="1">On</option><option value="0">Off</option></select>
+            </label>
+            <label>Needle colour
+              <select id="clockNeedle"><option value="0">White</option><option value="1">Black</option></select>
+            </label>
+            <label>Dial style
+              <select id="clockDial">
+                <option value="0">Digital</option><option value="1">Symbol</option>
+                <option value="2">Constellation</option><option value="3">Zodiac</option>
+              </select>
+            </label>
+          </div>
+        </details>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

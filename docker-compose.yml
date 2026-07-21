@@ -1,0 +1,16 @@
+services:
+  holofan:
+    build: .
+    image: holofan-studio
+    container_name: holofan-studio
+    ports:
+      - "8080:8080"
+    environment:
+      # Cap uploads (bytes). Raise for longer/heavier source clips.
+      HOLOFAN_MAX_UPLOAD_BYTES: "524288000"
+    volumes:
+      - holofan-data:/data
+    restart: unless-stopped
+
+volumes:
+  holofan-data:

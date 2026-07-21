@@ -1,0 +1,33 @@
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Runtime data (uploads & rendered clips)
+data/
+holofan-data/
+
+# Reverse-engineering artifacts (raw captures — kept local, not committed)
+tools/re/patterns/
+tools/re/captures/
+tools/re/out/
+
+# Factory SD-card backup: ~580MB of UNTRUSTED vendor Windows binaries + demo .BIN.
+# Never commit (size, licensing, and it is third-party untrusted code).
+backup files from factory/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Python cache
+__pycache__/
+*.pyc

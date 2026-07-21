@@ -1,0 +1,12 @@
+# Pulls the latest image and (re)starts the stack. Run by holofan-update.timer.
+# Because `pull` is a no-op when nothing changed, this doubles as a watchdog:
+# if the app is down it comes back up; if a new image exists it updates.
+[Unit]
+Description=HoloFan Studio auto-update & watchdog
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/holofan
+ExecStart=/opt/holofan/holofan-update.sh

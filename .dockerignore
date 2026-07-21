@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+
+# Untrusted vendor SD-card backup (~580MB) and reverse-engineering scratch — never ship these.
+backup files from factory/
+tools/re/patterns/
+tools/re/captures/
+tools/re/out/
+**/.vs/
+**/.vscode/
+.git/
+.github/
+.history/
+*.user
+Dockerfile
+docker-compose.yml
+README.md

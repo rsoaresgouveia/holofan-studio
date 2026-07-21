@@ -1,0 +1,25 @@
+# Raspberry Pi deployment: the Pi bridges your LAN and the fan's own WiFi AP.
+#
+#   eth0  -> your network        (you reach the UI here)
+#   wlan0 -> the fan's "3DCircle_…" AP, 192.168.4.x
+#
+# The image is PULLED from GHCR (built by CI) — never built on the Pi. See deploy/pi/.
+# Usage:   docker compose -f docker-compose.pi.yml pull && docker compose -f docker-compose.pi.yml up -d
+services:
+  holofan:
+    image: ghcr.io/rsoaresgouveia/holofan-studio:latest
+    container_name: holofan-studio
+    network_mode: host          # share the Pi's routing table -> reaches 192.168.4.1 over wlan0
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      # A 1GB Pi 3B+ struggles with large clips; cap uploads modestly.
+      HOLOFAN_MAX_UPLOAD_BYTES: "209715200"
+      # Only if you moved the fan's AP onto a different subnet:
+      # HOLOFAN_FAN_HOST: "192.168.4.1"
+      # HOLOFAN_FAN_PORT: "20320"
+    volumes:
+      - holofan-data:/data
+    restart: unless-stopped
+
+volumes:
+  holofan-data:

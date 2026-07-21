@@ -1,0 +1,12 @@
+# Runs the auto-update/watchdog every 15 minutes, and shortly after boot.
+[Unit]
+Description=Run HoloFan Studio auto-update every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=holofan-update.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+# Brings HoloFan Studio up at boot (auto-start when the Pi powers on).
+# The 15-minute timer keeps it updated and running afterwards.
+[Unit]
+Description=HoloFan Studio (LED hologram fan)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/holofan
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+
+[Install]
+WantedBy=multi-user.target
