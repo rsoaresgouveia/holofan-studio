@@ -49,6 +49,67 @@ public static class FanProtocol
     /// <summary>Recovers a payload length from the 3 encoded bytes (inverse of <see cref="Frame"/>).</summary>
     public static int DecodeLength(byte b0, byte b1, byte b2) =>
         b0 * 323 + (b1 - 0x63) * 17 + (b2 - 0x62);
+
+    private static readonly System.Text.Encoding Gbk;
+
+    static FanProtocol()
+    {
+        // The device names files in GBK (code page 936) — register the provider so we can decode them.
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        Gbk = System.Text.Encoding.GetEncoding(936);
+    }
+
+    /// <summary>
+    /// Parses the playlist the device sends back right after the handshake (its "device
+    /// configuration"): between the header/trailer magics it carries a status byte, a 3-char tag
+    /// ("gpi"), then length-prefixed file names (GBK), then a status tail whose first byte is the
+    /// file count. Confirmed against a live 42-F2 (12 demo clips). Pure and unit-tested.
+    /// </summary>
+    public static IReadOnlyList<string> ParsePlaylist(ReadOnlySpan<byte> reply)
+    {
+        var names = new List<string>();
+        var header = System.Text.Encoding.ASCII.GetBytes(HeaderMagic);
+        var trailer = System.Text.Encoding.ASCII.GetBytes(TrailerMagic);
+
+        var start = IndexOf(reply, header);
+        if (start < 0) return names;
+        start += header.Length;
+        var end = IndexOf(reply.Slice(start), trailer);
+        var payload = end < 0 ? reply.Slice(start) : reply.Slice(start, end);
+
+        // Skip the leading status byte (0x00) and the ascii tag ("gpi").
+        var i = 0;
+        if (i < payload.Length && payload[i] == 0) i++;
+        while (i < payload.Length && payload[i] is >= (byte)'a' and <= (byte)'z') i++;
+
+        // Length-prefixed names; stop at the status tail (whose bytes aren't a plausible name).
+        while (i < payload.Length)
+        {
+            int len = payload[i];
+            if (len == 0 || i + 1 + len > payload.Length) break;
+            var nameBytes = payload.Slice(i + 1, len);
+            if (!IsPlausibleName(nameBytes)) break;
+            names.Add(Gbk.GetString(nameBytes));
+            i += 1 + len;
+        }
+        return names;
+    }
+
+    // A name byte is printable ASCII or a GBK lead/continuation byte (>= 0x81); the status tail
+    // (which starts with a small control byte like 0x0c) fails this and ends the list.
+    private static bool IsPlausibleName(ReadOnlySpan<byte> bytes)
+    {
+        foreach (var b in bytes)
+            if (b is < 0x20 or (> 0x7e and < 0x81)) return false;
+        return true;
+    }
+
+    private static int IndexOf(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle)
+    {
+        for (var i = 0; i + needle.Length <= haystack.Length; i++)
+            if (haystack.Slice(i, needle.Length).SequenceEqual(needle)) return i;
+        return -1;
+    }
 }
 
 /// <summary>

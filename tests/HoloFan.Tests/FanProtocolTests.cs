@@ -69,6 +69,38 @@ public class FanProtocolTests
     }
 
     [Fact]
+    public void Parses_the_real_playlist_a_42F2_returned()
+    {
+        // Captured live from the fan at 192.168.4.1:20320 in reply to the handshake:
+        // header + 00"gpi" + <len><name> entries (GBK) + status tail + trailer.
+        var reply = Convert.FromHexString(
+            "433045454237433942414133" +                       // header "C0EEB7C9BAA3"
+            "00677069" +                                       // 00 "gpi"
+            "0330d3e3" + "0531bafcc0ea" + "0532bfd6c1fa" +     // 0鱼 1狐狸 2恐龙
+            "0533c9f1cade" + "06345449474552" +               // 3神兽 4TIGER
+            "0536b5c6c1fd" + "0337b4ba" + "0539c6fbb3b5" +     // 6灯笼 7春 9汽车
+            "04b7bfd7d3" + "02c1b3" + "06c2edc0efb0c2" +       // 房子 脸 马里奥
+            "04cef7b9cf" +                                     // 西瓜
+            "020c0000000001010000000000000000" +               // status tail (0x0c = 12 files)
+            "433045454244463945354237");                       // trailer "C0EEBDF9E5B7"
+
+        var files = FanProtocol.ParsePlaylist(reply);
+
+        Assert.Equal(12, files.Count);
+        Assert.Equal("0鱼", files[0]);
+        Assert.Equal("4TIGER", files[4]);
+        Assert.Equal("马里奥", files[10]);   // Mario
+        Assert.Equal("西瓜", files[11]);     // watermelon
+    }
+
+    [Fact]
+    public void Playlist_parse_is_safe_on_garbage()
+    {
+        Assert.Empty(FanProtocol.ParsePlaylist(new byte[] { 1, 2, 3 }));
+        Assert.Empty(FanProtocol.ParsePlaylist(ReadOnlySpan<byte>.Empty));
+    }
+
+    [Fact]
     public void Endpoint_defaults_to_what_the_binary_hardcodes()
     {
         var e = new FanEndpoint();

@@ -214,6 +214,13 @@ app.MapPost("/api/fan/disconnect", async (FanClient fan) =>
     return Results.Ok(new { connected = false });
 });
 
+// The clips currently on the fan's card (from the playlist it sends at connect).
+app.MapGet("/api/fan/playlist", (FanClient fan) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+    return Results.Ok(new { files = fan.List() });
+});
+
 app.MapPost("/api/fan/command", async (FanCommandRequest request, FanClient fan, CancellationToken ct) =>
 {
     if (!Enum.TryParse<FanCommand>(request.Command, ignoreCase: true, out var cmd))

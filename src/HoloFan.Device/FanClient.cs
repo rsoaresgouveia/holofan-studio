@@ -39,20 +39,49 @@ public sealed class FanClient : IAsyncDisposable
 {
     private readonly FanEndpoint _endpoint;
     private TcpClient? _tcp;
+    private byte[]? _handshakeReply;
 
     public FanClient(FanEndpoint? endpoint = null) => _endpoint = endpoint ?? new FanEndpoint();
 
     public FanEndpoint Endpoint => _endpoint;
     public bool IsConnected => _tcp?.Connected == true;
 
-    /// <summary>Connects and performs the greeting the device expects before any command.</summary>
+    /// <summary>
+    /// Connects and performs the greeting the device expects. The device replies with its
+    /// "configuration" — the playlist — which we keep for <see cref="ListAsync"/>.
+    /// </summary>
     public async Task ConnectAsync(CancellationToken ct = default)
     {
         await DisconnectAsync();
         _tcp = new TcpClient { NoDelay = true };
         await _tcp.ConnectAsync(_endpoint.Host, _endpoint.Port, ct);
-        var hello = FanProtocol.Handshake();
-        await _tcp.GetStream().WriteAsync(hello, ct);
+        var stream = _tcp.GetStream();
+        await stream.WriteAsync(FanProtocol.Handshake(), ct);
+        _handshakeReply = await ReadFrameAsync(stream, ct);
+    }
+
+    /// <summary>Reads one framed reply (…up to and including the trailer magic), or null on timeout.</summary>
+    private static async Task<byte[]?> ReadFrameAsync(NetworkStream stream, CancellationToken ct)
+    {
+        var trailer = System.Text.Encoding.ASCII.GetBytes(FanProtocol.TrailerMagic);
+        var buffer = new List<byte>();
+        var tmp = new byte[1024];
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+        try
+        {
+            while (buffer.Count < 64 * 1024)
+            {
+                var n = await stream.ReadAsync(tmp, cts.Token);
+                if (n == 0) break;
+                buffer.AddRange(tmp[..n]);
+                if (buffer.Count >= trailer.Length &&
+                    buffer.GetRange(buffer.Count - trailer.Length, trailer.Length).SequenceEqual(trailer))
+                    break;
+            }
+        }
+        catch (OperationCanceledException) { /* timeout: return what we have */ }
+        return buffer.Count > 0 ? buffer.ToArray() : null;
     }
 
     public async Task DisconnectAsync()
@@ -97,6 +126,13 @@ public sealed class FanClient : IAsyncDisposable
         => throw new NotImplementedException(
             "Bulk upload framing is not transcribed yet (VA 0x408b4a / 0x408c3f). " +
             "Copy the .bin to the TF card instead. See REVERSE_ENGINEERING.md.");
+
+    /// <summary>
+    /// The clips stored on the device's card, parsed from the playlist it returned at connect
+    /// (the device sends this once, right after the handshake — its "device configuration").
+    /// </summary>
+    public IReadOnlyList<string> List()
+        => _handshakeReply is null ? Array.Empty<string>() : FanProtocol.ParsePlaylist(_handshakeReply);
 
     public async ValueTask DisposeAsync() => await DisconnectAsync();
 }
