@@ -167,6 +167,23 @@ journalctl -u holofan-update.service -n 20
 > package **public** once (GitHub → your profile → Packages → holofan-studio → Package settings →
 > Change visibility → Public), or run `docker login ghcr.io` on the Pi with a token.
 
+## 6c. Reach it by name — `http://holofan-studio.local` (optional, Volumio-style)
+
+To open the UI at a friendly name with **no IP and no port**, run once:
+
+```bash
+sudo bash deploy/pi/setup-local-access.sh
+```
+
+It installs Avahi, sets the hostname to `holofan-studio` (so mDNS resolves
+`holofan-studio.local` on your LAN and tracks the IP automatically), and adds a compose
+override that serves the app on **port 80** — plus a sysctl so the non-root container may
+bind it. Then just open **http://holofan-studio.local**. Pass a different name as an argument
+(`sudo bash deploy/pi/setup-local-access.sh myname` → `myname.local`).
+
+> `.local` needs an mDNS resolver on your computer — built in on macOS/Windows and on Linux
+> with `avahi`/`nss-mdns`.
+
 ## 7. Sanity checks
 
 ```bash
