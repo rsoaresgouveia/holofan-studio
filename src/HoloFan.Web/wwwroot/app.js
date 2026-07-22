@@ -363,6 +363,117 @@ function bindControls() {
   $("resetBtn").addEventListener("click", () => location.reload());
 }
 
+// --- Modal + destructive-action security ------------------------------------
+// A tiny promise-free modal: fields become inputs; onOk returns true to keep it open.
+function showModal({ title, message, fields, okLabel, danger, onOk }) {
+  $("modalTitle").textContent = title;
+  $("modalMsg").textContent = message || "";
+  const box = $("modalFields");
+  box.innerHTML = "";
+  const inputs = {};
+  (fields || []).forEach((f) => {
+    const label = document.createElement("label");
+    label.textContent = f.label;
+    const input = document.createElement("input");
+    input.type = f.type || "password";
+    if (f.placeholder) input.placeholder = f.placeholder;
+    label.appendChild(input);
+    box.appendChild(label);
+    inputs[f.key] = input;
+  });
+  const ok = $("modalOk");
+  ok.textContent = okLabel || "Confirm";
+  ok.classList.toggle("danger-btn", !!danger);
+  $("modal").classList.remove("hidden");
+  const first = box.querySelector("input");
+  if (first) setTimeout(() => first.focus(), 40);
+
+  const close = () => { $("modal").classList.add("hidden"); ok.onclick = null; $("modalCancel").onclick = null; };
+  $("modalCancel").onclick = close;
+  ok.onclick = async () => {
+    const values = {};
+    Object.entries(inputs).forEach(([k, el]) => (values[k] = el.value));
+    const keepOpen = await onOk(values);
+    if (!keepOpen) close();
+  };
+}
+
+async function confirmDestructive(cmd, label) {
+  let status;
+  try { status = await api("/api/security/status"); } catch { status = { passphraseSet: false }; }
+
+  if (!status.passphraseSet) {
+    showModal({
+      title: "🔒 Set an admin passphrase",
+      message: "Destructive actions (Format disk, Clear cache) need an admin passphrase. It is stored only on the device (hashed), never in the cloud or on GitHub.",
+      fields: [
+        { key: "new", label: "New passphrase" },
+        { key: "confirm", label: "Confirm passphrase" },
+      ],
+      okLabel: "Set passphrase",
+      onOk: async (v) => {
+        if (!v.new || v.new !== v.confirm) { toast("Passphrases don't match.", true); return true; }
+        try {
+          await api("/api/security/passphrase", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ current: null, newPassphrase: v.new }),
+          });
+          toast("Passphrase set. Click the action again to confirm.");
+          return false;
+        } catch (e) { toast(e.message, true); return true; }
+      },
+    });
+    return;
+  }
+
+  showModal({
+    title: `⚠ ${label}`,
+    message: cmd === "FormatDisk"
+      ? "This ERASES every clip on the fan's card and cannot be undone. Type the admin passphrase to confirm."
+      : "This deletes files the device considers junk. Type the admin passphrase to confirm.",
+    fields: [{ key: "pass", label: "Admin passphrase" }],
+    okLabel: `Yes, ${label}`,
+    danger: true,
+    onOk: async (v) => {
+      try {
+        await api("/api/fan/command", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd, confirmDestructive: true, passphrase: v.pass }),
+        });
+        toast(`Sent: ${label}`);
+        return false;
+      } catch (e) { toast(e.message, true); return true; }  // wrong passphrase → keep open
+    },
+  });
+}
+
+async function managePassphrase() {
+  let status;
+  try { status = await api("/api/security/status"); } catch { status = { passphraseSet: false }; }
+  const set = status.passphraseSet;
+  showModal({
+    title: set ? "🔒 Change admin passphrase" : "🔒 Set admin passphrase",
+    message: "Protects Format disk / Clear cache. Stored hashed on the device only — never in the cloud or GitHub.",
+    fields: [
+      ...(set ? [{ key: "current", label: "Current passphrase" }] : []),
+      { key: "new", label: "New passphrase" },
+      { key: "confirm", label: "Confirm passphrase" },
+    ],
+    okLabel: "Save",
+    onOk: async (v) => {
+      if (!v.new || v.new !== v.confirm) { toast("Passphrases don't match.", true); return true; }
+      try {
+        await api("/api/security/passphrase", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current: v.current || null, newPassphrase: v.new }),
+        });
+        toast("Passphrase saved.");
+        return false;
+      } catch (e) { toast(e.message, true); return true; }
+    },
+  });
+}
+
 // --- Fan remote -------------------------------------------------------------
 function setFanState(connected, label) {
   $("fanDot").classList.toggle("on", connected);
@@ -404,23 +515,20 @@ function bindFan() {
   document.querySelectorAll(".fan-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const cmd = btn.dataset.cmd;
-      // Format disk / clear cache wipe content on the card — always ask.
-      if (btn.dataset.destructive) {
-        const what = cmd === "FormatDisk"
-          ? "Format the fan's disk?\n\nThis ERASES every clip stored on the card. It cannot be undone."
-          : "Clear the fan's cache?\n\nThis deletes files on the card the device considers junk.";
-        if (!confirm(what)) return;
-      }
+      // Format disk / clear cache wipe content — gate them behind the admin passphrase.
+      if (btn.dataset.destructive) { confirmDestructive(cmd, btn.textContent.trim()); return; }
       try {
         await api("/api/fan/command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: cmd, confirmDestructive: !!btn.dataset.destructive }),
+          body: JSON.stringify({ command: cmd, confirmDestructive: false }),
         });
         toast(`Sent: ${btn.textContent.trim()}`);
       } catch (e) { toast(e.message, true); }
     });
   });
+
+  $("managePass").addEventListener("click", managePassphrase);
 
   $("sendFanBtn").addEventListener("click", async () => {
     if (!state.lastBinJob) return;

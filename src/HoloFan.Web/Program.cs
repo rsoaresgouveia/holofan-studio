@@ -24,6 +24,7 @@ builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = uploadLimit)
 builder.Services.AddSingleton<StorageService>();
 builder.Services.AddSingleton<FfmpegService>();
 builder.Services.AddSingleton<JobStore>();
+builder.Services.AddSingleton<SecurityService>();
 
 // One live connection to the fan, shared by the control panel.
 builder.Services.AddSingleton(_ => new FanClient(new FanEndpoint
@@ -221,17 +222,42 @@ app.MapGet("/api/fan/playlist", (FanClient fan) =>
     return Results.Ok(new { files = fan.List() });
 });
 
-app.MapPost("/api/fan/command", async (FanCommandRequest request, FanClient fan, CancellationToken ct) =>
+app.MapPost("/api/fan/command", async (FanCommandRequest request, FanClient fan, SecurityService security, CancellationToken ct) =>
 {
     if (!Enum.TryParse<FanCommand>(request.Command, ignoreCase: true, out var cmd))
         return Results.BadRequest(new { error = $"Unknown command '{request.Command}'." });
 
+    // Destructive commands require the admin passphrase.
+    var destructive = cmd is FanCommand.FormatDisk or FanCommand.ClearCache;
+    if (destructive)
+    {
+        if (!security.IsPassphraseSet())
+            return Results.BadRequest(new { error = "Set an admin passphrase first.", needsPassphraseSetup = true });
+        if (!security.Verify(request.Passphrase))
+            return Results.BadRequest(new { error = "Wrong passphrase." });
+    }
+
     try
     {
-        await fan.SendAsync(cmd, request.ConfirmDestructive, ct);
+        await fan.SendAsync(cmd, confirmDestructive: destructive, ct);
         return Results.Ok(new { sent = cmd.ToString() });
     }
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+// Admin passphrase that gates destructive fan actions.
+app.MapGet("/api/security/status", (SecurityService security) =>
+    Results.Ok(new { passphraseSet = security.IsPassphraseSet() }));
+
+app.MapPost("/api/security/passphrase", (PassphraseRequest request, SecurityService security) =>
+{
+    try
+    {
+        return security.SetPassphrase(request.Current, request.NewPassphrase)
+            ? Results.Ok(new { passphraseSet = true })
+            : Results.BadRequest(new { error = "Current passphrase is wrong." });
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 // Push a rendered .bin to the fan over WiFi (decoded upload protocol; device writes the file).
@@ -283,8 +309,11 @@ app.MapGet("/api/jobs/{id}/download", (string id, JobStore jobs, StorageService 
 
 app.Run();
 
-/// <summary>A button press on the fan's control panel.</summary>
-public sealed record FanCommandRequest(string Command, bool ConfirmDestructive = false);
+/// <summary>A button press on the fan's control panel. Destructive commands carry the admin passphrase.</summary>
+public sealed record FanCommandRequest(string Command, bool ConfirmDestructive = false, string? Passphrase = null);
+
+/// <summary>Set or change the admin passphrase (current required only when changing).</summary>
+public sealed record PassphraseRequest(string? Current, string NewPassphrase);
 
 /// <summary>A change to one of the fan's clock dials.</summary>
 public sealed record ClockRequest(string Setting, byte Value);

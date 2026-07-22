@@ -142,6 +142,7 @@
         <div class="fan-head">
           <h3>Fan remote <span class="muted small">— join the fan's “3DCircle_…” WiFi first</span></h3>
           <div class="fan-conn">
+            <button type="button" id="managePass" class="link-btn small" title="Admin passphrase for destructive actions">🔒 passphrase</button>
             <span id="fanDot" class="dot"></span>
             <span id="fanState" class="small muted">Unconnected</span>
             <button type="button" id="fanConnect" class="btn-mini">Connect</button>
@@ -183,6 +184,19 @@
         </details>
     </section>
   </main>
+
+  <!-- Confirmation / passphrase modal -->
+  <div id="modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="modalTitle"></h3>
+      <p id="modalMsg" class="muted small"></p>
+      <div id="modalFields"></div>
+      <div class="modal-actions">
+        <button type="button" id="modalCancel" class="btn-secondary">Cancel</button>
+        <button type="button" id="modalOk" class="btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast hidden"></div>
   <script src="/app.js"></script>
