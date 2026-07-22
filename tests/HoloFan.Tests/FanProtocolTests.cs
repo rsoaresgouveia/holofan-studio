@@ -93,6 +93,39 @@ public class FanProtocolTests
         Assert.Equal("西瓜", files[11]);     // watermelon
     }
 
+    [Theory]
+    // Values verified live: the fan accepted our filename chunks and its own 5-byte-payload
+    // ack encoded its length as "00 6b 65" (= ChunkLengthBytes(5)).
+    [InlineData(0, "006a63")]
+    [InlineData(1, "006a64")]
+    [InlineData(5, "006b65")]
+    [InlineData(8, "006c65")]
+    [InlineData(12, "006e63")]
+    [InlineData(100, "066d64")]
+    [InlineData(252, "106e63")]
+    [InlineData(1000, "426d64")]
+    [InlineData(1460, "616b65")]
+    public void Chunk_length_encoding_matches_the_device(int len, string expectedHex)
+    {
+        Assert.Equal(expectedHex, Convert.ToHexString(FanProtocol.ChunkLengthBytes(len)).ToLowerInvariant());
+    }
+
+    [Fact]
+    public void Upload_begin_is_the_20_byte_signature()
+    {
+        Assert.Equal("B2DDDDEDC0EEBDF9E5B7", Encoding.ASCII.GetString(FanProtocol.UploadBegin()));
+    }
+
+    [Fact]
+    public void Chunk_wraps_data_in_header_length_and_trailer()
+    {
+        var pkt = FanProtocol.Chunk("ZZTEST"u8);
+        Assert.Equal("B2DDDDED", Encoding.ASCII.GetString(pkt, 0, 8));
+        Assert.Equal("ZZTEST", Encoding.ASCII.GetString(pkt, 11, 6));
+        Assert.Equal("C0EEBDF9E5B7", Encoding.ASCII.GetString(pkt, pkt.Length - 12, 12));
+        Assert.True(FanProtocol.IsFramedReply(pkt));
+    }
+
     [Fact]
     public void Playlist_parse_is_safe_on_garbage()
     {

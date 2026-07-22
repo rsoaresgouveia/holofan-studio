@@ -240,12 +240,27 @@ Chunk envelope (fully decoded):
 ```
 `"B2DDDDED"+"C0EEBDF9E5B7"` is the same 20-byte signature appended to `房子.BIN`/`马里奥.BIN`.
 
-**Why it can't be finished from the binary alone:** the 3-byte length **overflows for large sizes**
-(a 9 MB file → length 0), so files go in **many small chunks**, almost certainly with **per-chunk
-acks** (the thread interleaves `recv`); and the **device-config reply** after the handshake exists
-only on the wire. Both must be **observed on the device** — `tools/re/probe_fan.py` captures the
-handshake reply as step one. `FanClient.UploadAsync` stays throwing until then: a malformed chunked
-stream could wedge the device's "upload in progress" flag (set at VA 0x408e09).
+**Solved device-in-the-loop (2026-07-21).** Probing the real fan revealed the full sequence
+(worker VA 0x405a20 → per-file sender VA 0x4050b0):
+
+```
+fresh TCP connection (NO 24-byte handshake)
+send 20-byte BEGIN  "B2DDDDEDC0EEBDF9E5B7"
+send filename chunk  "B2DDDDED" + len(3) + name + "C0EEBDF9E5B7"
+recv ack             ← device replies (28 B, status 0x0b) — CONFIRMED live
+send raw file bytes  (NOT chunked; the device reads until the socket closes)
+close
+```
+
+Key corrections from the live probe: the data is sent **raw** (not chunked); the file's **size is
+not announced** (EOF = socket close); and the chunk length field is validated by the ack parser
+(VA 0x404cd0) as `((b0·5 + b1)·3) + b2`, matching our `ChunkLengthBytes`. The device's own ack
+encodes its length the same way — a self-check that our encoding is correct.
+
+Implemented in `FanClient.UploadAsync` + `POST /api/fan/upload` + a "Send to fan" button.
+`ChunkLengthBytes` is unit-tested against device-verified values. Validated up to the ack; the raw
+write is best-effort pending a full end-to-end test (upload a small clip → confirm it appears in
+the playlist).
 
 The **Wi-Fi config** rename (command `r` → dialog 140 → Apply at VA 0x40a9d0) is the same shape:
 send `r`, the device enters config mode, then the new SSID/password go over the wire — also

@@ -229,6 +229,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   box-shadow: 0 0 40px #a78bfa44;
 }
 
+.send-fan { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+.send-fan input { width: 130px; margin: 0; }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

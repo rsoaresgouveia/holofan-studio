@@ -285,6 +285,10 @@ function pollJob(jobId, format = "mp4") {
           else $("resultVideo").src = url;
           $("downloadLink").textContent = isBin ? "Download .bin (copy to the fan's SD card)" : "Download MP4";
           $("downloadLink").href = url;
+          // A .bin can also be pushed over WiFi if the fan is connected.
+          state.lastBinJob = isBin ? jobId : null;
+          const canSend = isBin && $("fanDot").classList.contains("on");
+          $("sendToFan").classList.toggle("hidden", !canSend);
           $("resultReady").classList.remove("hidden");
           resolve();
         } else {
@@ -416,6 +420,23 @@ function bindFan() {
         toast(`Sent: ${btn.textContent.trim()}`);
       } catch (e) { toast(e.message, true); }
     });
+  });
+
+  $("sendFanBtn").addEventListener("click", async () => {
+    if (!state.lastBinJob) return;
+    const btn = $("sendFanBtn");
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "Uploading…";
+    try {
+      const r = await api("/api/fan/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: state.lastBinJob, name: $("fanClipName").value || "HOLOFAN" }),
+      });
+      toast(`Sent "${r.uploaded}" to the fan (${(r.bytes / 1024).toFixed(0)} KB). Now on the device.`);
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = original; }
   });
 
   const clock = { clockEnabled: "Enabled", clockNeedle: "NeedleColour", clockDial: "DialStyle" };

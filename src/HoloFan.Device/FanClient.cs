@@ -118,14 +118,51 @@ public sealed class FanClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Uploads a rendered <c>.bin</c>. The bulk-transfer records (VA 0x408b4a / 0x408c3f) are not
-    /// fully transcribed yet, so this refuses rather than risk a malformed stream at the device —
-    /// use the SD-card route in the meantime.
+    /// Uploads a rendered <c>.bin</c> to the device over WiFi, then reconnects so the playlist
+    /// refreshes. The sequence was decoded from the vendor's upload worker (VA 0x405a20 →
+    /// 0x4050b0) and validated live up to the filename ack:
+    ///
+    ///   fresh connection (no handshake) → 20-byte BEGIN → filename chunk → read+validate ack
+    ///   → raw file bytes (the device reads until close) → close.
+    ///
+    /// The device names clips without an extension, so <paramref name="name"/> is sent as-is.
     /// </summary>
-    public Task UploadAsync(string name, byte[] bin, IProgress<double>? progress = null, CancellationToken ct = default)
-        => throw new NotImplementedException(
-            "Bulk upload framing is not transcribed yet (VA 0x408b4a / 0x408c3f). " +
-            "Copy the .bin to the TF card instead. See REVERSE_ENGINEERING.md.");
+    public async Task UploadAsync(string name, byte[] bin, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        // Upload runs on its own socket; the device accepts a single client, so free the
+        // shared connection first, then restore it afterwards to refresh the playlist.
+        var wasConnected = IsConnected;
+        await DisconnectAsync();
+
+        try
+        {
+            using var tcp = new TcpClient { NoDelay = true };
+            await tcp.ConnectAsync(_endpoint.Host, _endpoint.Port, ct);
+            var stream = tcp.GetStream();
+
+            await stream.WriteAsync(FanProtocol.UploadBegin(), ct);
+            await stream.WriteAsync(FanProtocol.Chunk(System.Text.Encoding.ASCII.GetBytes(name)), ct);
+
+            var ack = await ReadFrameAsync(stream, ct);
+            if (ack is null || !FanProtocol.IsFramedReply(ack))
+                throw new InvalidOperationException("The fan did not acknowledge the filename.");
+
+            // Raw file bytes, in blocks, reporting progress. Device reads until the socket closes.
+            const int block = 64 * 1024;
+            for (var sent = 0; sent < bin.Length; sent += block)
+            {
+                var n = Math.Min(block, bin.Length - sent);
+                await stream.WriteAsync(bin.AsMemory(sent, n), ct);
+                progress?.Report((double)(sent + n) / bin.Length);
+            }
+            await stream.FlushAsync(ct);
+        }
+        finally
+        {
+            if (wasConnected)
+                try { await ConnectAsync(ct); } catch { /* best effort refresh */ }
+        }
+    }
 
     /// <summary>
     /// The clips stored on the device's card, parsed from the playlist it returned at connect

@@ -234,6 +234,25 @@ app.MapPost("/api/fan/command", async (FanCommandRequest request, FanClient fan,
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+// Push a rendered .bin to the fan over WiFi (decoded upload protocol; device writes the file).
+app.MapPost("/api/fan/upload", async (FanUploadRequest request, FanClient fan, StorageService storage, CancellationToken ct) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+
+    var path = storage.FindOutput(request.JobId);
+    if (path is null || !path.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { error = "No rendered .bin for that job — generate a .bin first." });
+
+    var name = string.IsNullOrWhiteSpace(request.Name) ? "HOLOFAN" : request.Name.Trim();
+    try
+    {
+        var bin = await File.ReadAllBytesAsync(path, ct);
+        await fan.UploadAsync(name, bin, ct: ct);
+        return Results.Ok(new { uploaded = name, bytes = bin.Length, files = fan.List() });
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
 app.MapPost("/api/fan/clock", async (ClockRequest request, FanClient fan, CancellationToken ct) =>
 {
     if (!Enum.TryParse<ClockSetting>(request.Setting, ignoreCase: true, out var setting))
@@ -269,6 +288,9 @@ public sealed record FanCommandRequest(string Command, bool ConfirmDestructive =
 
 /// <summary>A change to one of the fan's clock dials.</summary>
 public sealed record ClockRequest(string Setting, byte Value);
+
+/// <summary>Push a rendered .bin (by job id) to the fan under a chosen clip name.</summary>
+public sealed record FanUploadRequest(string JobId, string Name);
 
 // Exposed so integration tests (WebApplicationFactory) can reference the entry point.
 public partial class Program;

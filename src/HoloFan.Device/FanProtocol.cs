@@ -50,6 +50,64 @@ public static class FanProtocol
     public static int DecodeLength(byte b0, byte b1, byte b2) =>
         b0 * 323 + (b1 - 0x63) * 17 + (b2 - 0x62);
 
+    // --- File upload (separate framing) --------------------------------------
+    // Chunks use a different header/length encoding from commands. Decoded from the
+    // chunk packer at VA 0x408b70 and confirmed live: the device's own ack is a chunk
+    // whose length bytes decode exactly through this scheme.
+
+    /// <summary>The 8-byte chunk header (also the first half of the .BIN trailer signature).</summary>
+    public const string ChunkHeaderMagic = "B2DDDDED";
+
+    /// <summary>The 20-byte marker that opens an upload (chunk header + trailer, no length/payload).</summary>
+    public static byte[] UploadBegin() =>
+        System.Text.Encoding.ASCII.GetBytes(ChunkHeaderMagic + TrailerMagic);
+
+    private static int HighMul(int a, int b) => (int)((long)a * b >> 32);
+
+    /// <summary>
+    /// The 3-byte length field for an upload chunk, replicating the vendor's exact integer
+    /// arithmetic (imul-magic divides). Verified against the device: it accepted our filename
+    /// chunks and its own acks encode their length the same way.
+    /// </summary>
+    public static byte[] ChunkLengthBytes(int len)
+    {
+        var q1 = (HighMul(len, unchecked((int)0x88888889)) + len) >> 3;
+        if (q1 < 0) q1++;
+        var q2 = HighMul(len, 0x55555556);
+        if (q2 < 0) q2++;
+        return new[]
+        {
+            (byte)q1,
+            (byte)(0x6A + q2 % 5),
+            (byte)(0x63 + (len - q1 * 15) % 3),
+        };
+    }
+
+    /// <summary>Wraps upload payload in the chunk framing: header + 3-byte length + data + trailer.</summary>
+    public static byte[] Chunk(ReadOnlySpan<byte> data)
+    {
+        var hdr = System.Text.Encoding.ASCII.GetBytes(ChunkHeaderMagic);
+        var trl = System.Text.Encoding.ASCII.GetBytes(TrailerMagic);
+        var len = ChunkLengthBytes(data.Length);
+        var packet = new byte[hdr.Length + len.Length + data.Length + trl.Length];
+        var p = 0;
+        hdr.CopyTo(packet, p); p += hdr.Length;
+        len.CopyTo(packet, p); p += len.Length;
+        data.CopyTo(packet.AsSpan(p)); p += data.Length;
+        trl.CopyTo(packet, p);
+        return packet;
+    }
+
+    /// <summary>True if a reply is a well-formed chunk (device acknowledged), i.e. carries both magics.</summary>
+    public static bool IsFramedReply(ReadOnlySpan<byte> reply)
+    {
+        if (reply.Length < 20) return false;
+        var hdr = System.Text.Encoding.ASCII.GetBytes(ChunkHeaderMagic);
+        var trl = System.Text.Encoding.ASCII.GetBytes(TrailerMagic);
+        return reply.Slice(0, hdr.Length).SequenceEqual(hdr)
+            && reply.Slice(reply.Length - trl.Length).SequenceEqual(trl);
+    }
+
     private static readonly System.Text.Encoding Gbk;
 
     static FanProtocol()
