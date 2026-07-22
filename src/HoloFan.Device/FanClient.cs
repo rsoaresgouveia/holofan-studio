@@ -120,12 +120,18 @@ public sealed class FanClient : IAsyncDisposable
     /// <summary>
     /// Uploads a rendered <c>.bin</c> to the device over WiFi, then reconnects so the playlist
     /// refreshes. The sequence was decoded from the vendor's upload worker (VA 0x405a20 →
-    /// 0x4050b0) and validated live up to the filename ack:
+    /// 0x4050b0):
     ///
     ///   fresh connection (no handshake) → 20-byte BEGIN → filename chunk → read+validate ack
-    ///   → raw file bytes (the device reads until close) → close.
+    ///   → raw file bytes (0x3c000-byte blocks) → 20-byte END marker → close.
     ///
     /// The device names clips without an extension, so <paramref name="name"/> is sent as-is.
+    ///
+    /// ⚠ Validated live only up to the filename ack. In testing the device accepts the name but
+    /// does NOT persist the clip after data + END + close — there is a final reconnect/verify
+    /// round (VA 0x4055ff) that is not yet reverse-engineered. Until that lands, this may not make
+    /// the file appear in the playlist; the SD-card route is the reliable path. See
+    /// REVERSE_ENGINEERING.md.
     /// </summary>
     public async Task UploadAsync(string name, byte[] bin, IProgress<double>? progress = null, CancellationToken ct = default)
     {
@@ -147,14 +153,15 @@ public sealed class FanClient : IAsyncDisposable
             if (ack is null || !FanProtocol.IsFramedReply(ack))
                 throw new InvalidOperationException("The fan did not acknowledge the filename.");
 
-            // Raw file bytes, in blocks, reporting progress. Device reads until the socket closes.
-            const int block = 64 * 1024;
+            // Raw file bytes, in blocks, reporting progress.
+            const int block = 0x3C000;
             for (var sent = 0; sent < bin.Length; sent += block)
             {
                 var n = Math.Min(block, bin.Length - sent);
                 await stream.WriteAsync(bin.AsMemory(sent, n), ct);
                 progress?.Report((double)(sent + n) / bin.Length);
             }
+            await stream.WriteAsync(FanProtocol.UploadBegin(), ct);   // same 20-byte marker delimits the end
             await stream.FlushAsync(ct);
         }
         finally

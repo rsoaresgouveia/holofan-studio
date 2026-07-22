@@ -258,9 +258,18 @@ not announced** (EOF = socket close); and the chunk length field is validated by
 encodes its length the same way — a self-check that our encoding is correct.
 
 Implemented in `FanClient.UploadAsync` + `POST /api/fan/upload` + a "Send to fan" button.
-`ChunkLengthBytes` is unit-tested against device-verified values. Validated up to the ack; the raw
-write is best-effort pending a full end-to-end test (upload a small clip → confirm it appears in
-the playlist).
+`ChunkLengthBytes` is unit-tested against device-verified values.
+
+**Live test result (2026-07-22): filename handshake works, commit does not (yet).** Against the real
+fan the filename chunk is acked every time (`0b 05 85 f9 c1`), but sending `BEGIN → filename → ack →
+raw data → END marker → close` does **not** make the clip appear in the playlist — tried a black
+frame and real 3-frame content, both left the playlist unchanged (and left **no junk** — incomplete
+uploads don't commit). The missing piece is the **finalize** after the END marker: the sender does a
+**reconnect + verify round at VA 0x4055ff** (CFile reopen at 0x40564d, another send via 0x404db0,
+flags `[ebx+0x44b8]`/`[ebx+0x1c84]`), and the device likely only commits then. Also unresolved: the
+ack's bytes 12–15 (`05 85 f9 c1`) are compared by the parser (VA 0x404d66) against `[edi+0x44b0]` —
+a filename-derived token both sides compute. Finishing the upload means transcribing 0x4055ff–0x4057xx
+and replaying that finalize. **Until then the SD-card route is the reliable way to load content.**
 
 The **Wi-Fi config** rename (command `r` → dialog 140 → Apply at VA 0x40a9d0) is the same shape:
 send `r`, the device enters config mode, then the new SSID/password go over the wire — also
