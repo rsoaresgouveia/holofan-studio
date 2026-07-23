@@ -209,6 +209,7 @@
       <div class="fan-head">
         <h3>Clip library <span class="muted small">— saved on the device, survives reboots</span></h3>
         <div class="fan-conn">
+          <button type="button" id="manageFan" class="btn-mini" disabled title="Connect to the fan first">⚙ Manage on fan</button>
           <input type="file" id="libImportInput" accept=".bin" hidden />
           <button type="button" id="libImport" class="btn-mini">＋ Import .bin</button>
         </div>
@@ -233,6 +234,42 @@
       <div class="modal-actions">
         <button type="button" id="modalCancel" class="btn-secondary">Cancel</button>
         <button type="button" id="modalOk" class="btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage-on-fan modal (Format + re-upload survivors) -->
+  <div id="syncModal" class="modal-overlay hidden">
+    <div class="modal-box modal-wide">
+      <h3>Manage what's on the fan</h3>
+      <p class="muted small">
+        Tick the clips the fan should hold. Applying <strong>formats the card</strong> and re-uploads
+        your selection from the library (in this order). The fan has no per-file delete, so this is
+        the only way to remove or rename a single clip.
+      </p>
+
+      <div id="syncEditor">
+        <ul id="syncLibList" class="sync-list"></ul>
+        <p id="syncEmptyLib" class="muted small hidden">Your library is empty — import or render a clip first.</p>
+        <p id="syncLostWarn" class="modal-error hidden"></p>
+        <p id="syncSummary" class="small"></p>
+        <label class="sync-pass">Admin passphrase
+          <input type="password" id="syncPass" placeholder="required — this formats the card" />
+        </label>
+        <label id="syncAckRow" class="sync-ack hidden">
+          <input type="checkbox" id="syncAck" /> <span>I understand the clips listed above will be erased.</span>
+        </label>
+        <p id="syncError" class="modal-error hidden"></p>
+      </div>
+
+      <div id="syncRunning" class="sync-progress hidden">
+        <div class="progress-bar"><span id="syncFill"></span></div>
+        <p id="syncMsg" class="muted small"></p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="syncCancel" class="btn-secondary">Cancel</button>
+        <button type="button" id="syncApply" class="btn-primary danger-btn">Format &amp; upload</button>
       </div>
     </div>
   </div>

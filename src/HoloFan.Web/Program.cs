@@ -27,6 +27,7 @@ builder.Services.AddSingleton<FfmpegService>();
 builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddSingleton<JobStore>();
 builder.Services.AddSingleton<SecurityService>();
+builder.Services.AddSingleton<FanSyncService>();
 
 // One live connection to the fan, shared by the control panel.
 builder.Services.AddSingleton(_ => new FanClient(new FanEndpoint
@@ -284,6 +285,52 @@ app.MapPost("/api/library/{id}/send", async (string id, FanClient fan, LibrarySe
     catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
+// --- Emulated fan-storage management (Format + re-upload survivors) ------------
+// The fan can't delete/rename a single clip, so "make the fan hold exactly these clips"
+// is Format Disk followed by re-uploading the chosen library clips. Gated by the admin
+// passphrase (it formats) and guarded against silently losing clips that aren't backed up.
+
+app.MapGet("/api/fan/sync", (FanSyncService sync) => Results.Ok(sync.State));
+
+app.MapPost("/api/fan/sync", (FanSyncRequest request, FanClient fan, FanSyncService sync,
+    SecurityService security, LibraryService library) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+    if (sync.IsRunning) return Results.Conflict(new { error = "A sync is already running." });
+
+    // This performs a Format Disk — same guard as the destructive fan buttons.
+    if (!security.IsPassphraseSet())
+        return Results.BadRequest(new { error = "Set an admin passphrase first.", needsPassphraseSetup = true });
+    if (!security.Verify(request.Passphrase))
+        return Results.BadRequest(new { error = "Wrong passphrase." });
+
+    var ids = request.ClipIds ?? Array.Empty<string>();
+    var clips = new List<LibraryService.LibraryClip>();
+    foreach (var id in ids)
+    {
+        var clip = library.Get(id);
+        if (clip is null) return Results.BadRequest(new { error = $"Unknown clip in selection." });
+        clips.Add(clip);
+    }
+
+    // Refuse to silently erase clips that are on the fan but not in this selection unless the
+    // caller has acknowledged the loss.
+    var lost = FanSyncService.ClipsLost(sync.CurrentFanClips(), clips.Select(c => c.Name));
+    if (lost.Count > 0 && !request.AcknowledgeLoss)
+        return Results.Conflict(new
+        {
+            error = "Some clips on the fan aren't in your selection and would be lost.",
+            lost,
+        });
+
+    try
+    {
+        sync.Start(ids);
+        return Results.Ok(new { started = true, total = clips.Count });
+    }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
 // --- Fan control (WiFi) -------------------------------------------------------
 // Every button the vendor software offers, spoken in the fan's own protocol.
 // Join the fan's open "3DCircle_…" AP first.
@@ -460,6 +507,8 @@ public sealed record ClockRequest(string Setting, byte Value);
 public sealed record FanUploadRequest(string JobId, string Name);
 
 public sealed record RenameRequest(string Name);
+
+public sealed record FanSyncRequest(string[]? ClipIds, string? Passphrase, bool AcknowledgeLoss);
 
 /// <summary>Seconds each picture is shown (5–30).</summary>
 public sealed record DurationRequest(int Seconds);

@@ -497,6 +497,11 @@ function setFanState(connected, label) {
     .forEach((s) => (s.disabled = !connected));
   $("fanStatus").classList.toggle("hidden", !connected);
   if (!connected) $("powerBadge").classList.add("hidden");
+  const manage = $("manageFan");
+  if (manage) {
+    manage.disabled = !connected;
+    manage.title = connected ? "Format & re-upload to manage clips on the fan" : "Connect to the fan first";
+  }
   if (typeof loadLibrary === "function") loadLibrary();   // reflect send-button availability
 }
 
@@ -754,6 +759,134 @@ function bindLibrary() {
   });
 }
 
+// --- Manage on fan (Format + re-upload survivors) ---------------------------
+const sync = { clips: [], fanClips: [], polling: null };
+
+async function openSyncModal() {
+  let lib;
+  try { lib = await api("/api/library"); }
+  catch (e) { toast(e.message, true); return; }
+  sync.clips = lib.clips;
+  // Best-effort: what's on the fan now (drives the pre-ticks and the loss warning).
+  try { sync.fanClips = (await api("/api/fan/playlist")).files || []; }
+  catch { sync.fanClips = []; }
+
+  $("syncEmptyLib").classList.toggle("hidden", sync.clips.length > 0);
+  const onFan = new Set(sync.fanClips.map((n) => n.toLowerCase()));
+  // Pre-tick clips already on the fan (matched by name) so unticking one = "remove it".
+  $("syncLibList").innerHTML = sync.clips.map((c) => `
+    <li class="sync-item">
+      <label>
+        <input type="checkbox" class="sync-cb" value="${c.id}" data-name="${escapeHtml(c.name)}" ${onFan.has(c.name.toLowerCase()) ? "checked" : ""} />
+        <span class="sync-name">${escapeHtml(c.name)}</span>
+        <span class="sync-tag">${onFan.has(c.name.toLowerCase()) ? "on fan" : "in library"}</span>
+      </label>
+    </li>`).join("");
+
+  $("syncError").classList.add("hidden");
+  $("syncPass").value = "";
+  $("syncAck").checked = false;
+  $("syncAckRow").classList.add("hidden");
+  $("syncEditor").classList.remove("hidden");
+  $("syncRunning").classList.add("hidden");
+  $("syncApply").disabled = false;
+  $("syncApply").textContent = "Format & upload";
+  document.querySelectorAll(".sync-cb").forEach((cb) => cb.addEventListener("change", recomputeSync));
+  recomputeSync();
+  $("syncModal").classList.remove("hidden");
+}
+
+function selectedSync() {
+  return [...document.querySelectorAll(".sync-cb:checked")].map((cb) => ({ id: cb.value, name: cb.dataset.name }));
+}
+
+function recomputeSync() {
+  const sel = selectedSync();
+  const keep = new Set(sel.map((s) => s.name.toLowerCase()));
+  const lost = sync.fanClips.filter((n) => !keep.has(n.toLowerCase()));
+  const warn = $("syncLostWarn");
+  if (lost.length) {
+    warn.textContent = `⚠ On the fan now but not selected — these will be erased: ${lost.join(", ")}`;
+    warn.classList.remove("hidden");
+    $("syncAckRow").classList.remove("hidden");
+  } else {
+    warn.classList.add("hidden");
+    $("syncAckRow").classList.add("hidden");
+  }
+  $("syncSummary").textContent = sel.length === 0
+    ? "The fan will be cleared (no clips)."
+    : `The fan will hold ${sel.length} clip(s): ${sel.map((s) => s.name).join(", ")}.`;
+}
+
+async function applySync() {
+  const sel = selectedSync();
+  const btn = $("syncApply");
+  const err = $("syncError");
+  err.classList.add("hidden");
+  const pass = $("syncPass").value;
+  if (!pass) { err.textContent = "Enter the admin passphrase."; err.classList.remove("hidden"); return; }
+
+  btn.disabled = true;
+  try {
+    await api("/api/fan/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clipIds: sel.map((s) => s.id),
+        passphrase: pass,
+        acknowledgeLoss: $("syncAck").checked,
+      }),
+    });
+    // Started — switch to progress and poll.
+    $("syncEditor").classList.add("hidden");
+    $("syncRunning").classList.remove("hidden");
+    pollSync();
+  } catch (e) {
+    btn.disabled = false;
+    // A 409 with a loss list means the ack is required; reveal it.
+    if (e.message && e.message.toLowerCase().includes("lost")) $("syncAckRow").classList.remove("hidden");
+    err.textContent = e.message;
+    err.classList.remove("hidden");
+  }
+}
+
+function pollSync() {
+  clearTimeout(sync.polling);
+  const tick = async () => {
+    let s;
+    try { s = await api("/api/fan/sync"); } catch { sync.polling = setTimeout(tick, 1500); return; }
+    $("syncFill").style.width = `${Math.round((s.progress || 0) * 100)}%`;
+    $("syncMsg").textContent = s.message || "";
+    if (s.state === "running") { sync.polling = setTimeout(tick, 1200); return; }
+    if (s.state === "done") {
+      toast(s.message || "Fan updated.");
+      $("syncModal").classList.add("hidden");
+      refreshPlaylist();
+    } else if (s.state === "failed") {
+      $("syncRunning").classList.add("hidden");
+      $("syncEditor").classList.remove("hidden");
+      $("syncApply").disabled = false;
+      const err = $("syncError");
+      err.textContent = s.error || "Sync failed.";
+      err.classList.remove("hidden");
+    }
+  };
+  tick();
+}
+
+function bindSync() {
+  $("manageFan").addEventListener("click", openSyncModal);
+  $("syncApply").addEventListener("click", applySync);
+  $("syncCancel").addEventListener("click", () => {
+    if ($("syncRunning").classList.contains("hidden")) $("syncModal").classList.add("hidden");
+    else toast("A sync is running — it will finish in the background.");
+  });
+  $("syncModal").addEventListener("click", (e) => {
+    if (e.target === $("syncModal") && $("syncRunning").classList.contains("hidden"))
+      $("syncModal").classList.add("hidden");
+  });
+}
+
 // --- Version & changelog ----------------------------------------------------
 // Tiny, safe Markdown → HTML: escape everything first, then a handful of block rules.
 // Enough for our CHANGELOG.md (headings, lists, bold, links, code) without a library.
@@ -820,6 +953,7 @@ loadPresets();
 bindControls();
 bindFan();
 bindLibrary();
+bindSync();
 refreshFan();
 loadLibrary();
 loadVersion();

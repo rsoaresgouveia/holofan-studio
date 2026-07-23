@@ -9,6 +9,18 @@ The format is loosely [Keep a Changelog](https://keepachangelog.com/); versions 
 `<Version>` in `src/HoloFan.Web/HoloFan.Web.csproj` and adds an entry here, in the same
 commit.**
 
+## [1.8.0] — 2026-07-23
+
+### Added
+- **Manage clips on the fan** (delete one, rename, bulk, reorder). The fan has no per-file
+  delete, so this works by **Format Disk + re-uploading the survivors** from the library:
+  tick which clips the fan should hold, and the app rebuilds the card to match. Gated behind
+  the admin passphrase (it formats) and it **won't silently erase** a clip that's on the fan
+  but not in your library — it warns and makes you acknowledge the loss first. Runs in the
+  background with progress. New endpoints: `POST /api/fan/sync`, `GET /api/fan/sync`.
+  ⚠️ The format-then-re-upload orchestration is new and still needs a hardware pass; the
+  underlying Format and upload steps are each already hardware-validated.
+
 ## [1.7.0] — 2026-07-23
 
 ### Added
