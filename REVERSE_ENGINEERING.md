@@ -290,6 +290,39 @@ The **Wi-Fi config** rename (command `r` → dialog 140 → Apply at VA 0x40a9d0
 send `r`, the device enters config mode, then the new SSID/password go over the wire — also
 device-in-the-loop to finish safely.
 
+### File management over WiFi — what the protocol does NOT support (2026-07-23)
+
+Full static sweep of `@Windows app(V13.0).exe`: all 5 `RT_DIALOG` templates parsed, all
+26 call sites of the command packer (VA 0x408a80) and every `send`/`recv` disassembled.
+
+- **No per-clip delete or rename** — not in the UI (the main dialog's only file controls are
+  `Uplode file(s)` 1014, `Clear Cache` 1037/`k`, `Format Disk` 1038/`j`; there are **no menus
+  or accelerators** in the binary at all) and not on the wire (no framed command carries a
+  filename/index for deletion). The only destructive ops are wipe-everything.
+- **No download / read-back** — only 4 `recv` sites exist: two read a **4 KB status text
+  report** (filenames + play-state, parsed by fn 0x403e80 from `File |`/`Video |`/`Audio |`
+  tags), two read the **0x5b4-byte upload ack**. Nothing ever reads frame-sized file bytes
+  back. So true read-all-then-rewrite management is impossible; a clip's bytes only exist on
+  the card once uploaded.
+
+**Consequence for HoloFan Studio:** per-file delete/rename/bulk must be *emulated* —
+`Format Disk` + re-upload the survivors — which requires the app to hold every clip's bytes
+in its own **persistent library** (factory backups + everything it has uploaded).
+
+### New command — `s` = set the fan's WiFi AP name/password
+
+The second half of the `r` (Wi-Fi config) handshake, previously anticipated but unnamed.
+Built at VA 0x40413e, sent via the packer at VA 0x404186, in the branch of fn 0x403e80 taken
+when the device's reply type byte == `'r'`:
+
+```
+'s' (0x73) | <ssid_len : 1 byte> | <SSID bytes> | <password bytes>
+total len = 2 + ssid_len + password_len      (empty password ⇒ factory default "123456789")
+```
+
+Renames the fan's own access point — **not** a clip. Flow: send `r` → device replies `r` →
+send this `s` frame.
+
 ---
 
 ## FINDINGS — from the factory SD-card backup (2026-07-16)
