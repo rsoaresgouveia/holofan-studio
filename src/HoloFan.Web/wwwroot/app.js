@@ -505,7 +505,7 @@ function setPower(poweredOn) {
   b.textContent = poweredOn ? "⏻ On" : "⏻ Standby";
 }
 
-function renderPlaylist(files, poweredOn) {
+function renderPlaylist(files, poweredOn, currentIndex) {
   setPower(poweredOn);
   $("clipCount").textContent = files && files.length ? `(${files.length})` : "";
   const ul = $("playlist");
@@ -514,8 +514,32 @@ function renderPlaylist(files, poweredOn) {
     return;
   }
   ul.innerHTML = files
-    .map((f, i) => `<li><span class="idx">${i + 1}</span><span>${escapeHtml(f)}</span></li>`)
+    .map((f, i) => {
+      const cur = i === currentIndex ? " current" : "";
+      const now = i === currentIndex ? `<span class="now">▶ now</span>` : "";
+      return `<li class="clip${cur}" data-index="${i}" title="Play this clip">` +
+        `<span class="idx">${i + 1}</span><span class="clip-name">${escapeHtml(f)}</span>${now}</li>`;
+    })
     .join("");
+  ul.querySelectorAll("li.clip").forEach((li) =>
+    li.addEventListener("click", () => playClip(parseInt(li.dataset.index, 10))));
+}
+
+// The device has no "play clip N", so we read the current index and step Next/Previous to it.
+async function playClip(index) {
+  const ul = $("playlist");
+  if (ul.classList.contains("busy")) return;
+  ul.classList.add("busy");
+  toast(`Jumping to clip ${index + 1}…`);
+  try {
+    await api("/api/fan/play", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index }),
+    });
+    await loadPlaylist();          // reflect the new current clip
+    toast(`Playing clip ${index + 1}.`);
+  } catch (e) { toast(e.message, true); }
+  finally { ul.classList.remove("busy"); }
 }
 
 function escapeHtml(s) {
@@ -528,7 +552,7 @@ async function loadPlaylist() {
   if (!$("fanDot").classList.contains("on")) return;
   try {
     const p = await api("/api/fan/playlist");
-    renderPlaylist(p.files, p.poweredOn);
+    renderPlaylist(p.files, p.poweredOn, p.currentIndex);
   } catch { /* transient */ }
 }
 

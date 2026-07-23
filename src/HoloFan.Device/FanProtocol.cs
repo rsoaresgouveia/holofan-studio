@@ -159,9 +159,13 @@ public static class FanProtocol
             i += 1 + len;
         }
 
+        // Status tail (confirmed live): byte 0 = current clip index (0-based; steps with
+        // Next/Previous), byte 3 = power (1 on / 0 standby), byte 6 = playing (1/0).
         var tail = payload[i..];
+        int? currentIndex = tail.Length > 0 && tail[0] < names.Count ? tail[0] : null;
         bool? poweredOn = tail.Length > 3 ? tail[3] != 0 : null;
-        return new FanStatus(names, poweredOn);
+        bool? playing = tail.Length > 6 ? tail[6] != 0 : null;
+        return new FanStatus(names, poweredOn, currentIndex, playing);
     }
 
     // A name byte is printable ASCII or a GBK lead/continuation byte (>= 0x81); the status tail
@@ -228,7 +232,8 @@ public enum FanCommand : byte
 }
 
 /// <summary>Readable device state parsed from the handshake/playlist reply.</summary>
-public sealed record FanStatus(IReadOnlyList<string> Files, bool? PoweredOn);
+public sealed record FanStatus(
+    IReadOnlyList<string> Files, bool? PoweredOn, int? CurrentIndex = null, bool? Playing = null);
 
 /// <summary>Which dial the 5-byte <c>'b'</c> command targets (clock feature).</summary>
 public enum ClockSetting : byte

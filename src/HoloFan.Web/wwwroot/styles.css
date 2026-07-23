@@ -253,6 +253,12 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .playlist li:last-child { border-bottom: none; }
 .playlist li .idx { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.6em; }
 .playlist li.empty { color: var(--muted); justify-content: center; }
+.playlist li.clip { cursor: pointer; transition: background .12s; }
+.playlist li.clip:hover { background: #5eead40d; }
+.playlist li.current { background: #5eead41a; }
+.playlist li .clip-name { flex: 1; }
+.playlist li .now { color: var(--accent); font-size: 11px; font-weight: 600; }
+.playlist.busy { opacity: .5; pointer-events: none; }
 .dur-row { align-items: center; gap: 12px; }
 .dur-apply { flex: 0 0 auto; margin-bottom: 0; padding: 7px 16px; }
 

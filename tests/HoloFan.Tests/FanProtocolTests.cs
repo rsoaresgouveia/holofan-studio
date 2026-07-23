@@ -145,6 +145,24 @@ public class FanProtocolTests
     }
 
     [Fact]
+    public void Parses_current_index_and_playing_from_status()
+    {
+        // Tail observed live: byte0 = current index, byte3 = power, byte6 = playing.
+        var reply = Convert.FromHexString(
+            "433045454237433942414133" +           // header
+            "00677069" +                           // 00 "gpi"
+            "0330d3e3" + "0531bafcc0ea" +          // 2 entries: "0鱼", "1狐狸"
+            "010c00010201010100000000" +           // tail: idx=1, power=1, playing=1
+            "433045454244463945354237");           // trailer
+
+        var s = FanProtocol.ParseStatus(reply);
+        Assert.Equal(2, s.Files.Count);
+        Assert.Equal(1, s.CurrentIndex);
+        Assert.True(s.PoweredOn);
+        Assert.True(s.Playing);
+    }
+
+    [Fact]
     public void Playlist_parse_is_safe_on_garbage()
     {
         Assert.Empty(FanProtocol.ParsePlaylist(new byte[] { 1, 2, 3 }));

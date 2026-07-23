@@ -181,6 +181,34 @@ public sealed class FanClient : IAsyncDisposable
         => _handshakeReply is null ? new FanStatus(Array.Empty<string>(), null) : FanProtocol.ParseStatus(_handshakeReply);
 
     /// <summary>
+    /// Jumps to a clip by list index. The device has no "play clip N" command, but it does
+    /// report the current index (status tail byte 0), so we read it and send exactly the right
+    /// number of <see cref="FanCommand.Next"/> / <see cref="FanCommand.Previous"/> steps — no
+    /// drift, because we sync to the live index first. Steps stay within the list (no wrap), so
+    /// it is correct regardless of the device's wrap behaviour.
+    /// </summary>
+    public async Task PlayIndexAsync(int target, CancellationToken ct = default)
+    {
+        // Refresh so we act on the live current index.
+        await ConnectAsync(ct);
+        var status = Status();
+        var count = status.Files.Count;
+        if (count == 0) throw new InvalidOperationException("The fan has no clips.");
+        if (target < 0 || target >= count) throw new ArgumentOutOfRangeException(nameof(target));
+
+        var current = status.CurrentIndex ?? 0;
+        var delta = target - current;
+        var cmd = delta > 0 ? FanCommand.Next : FanCommand.Previous;
+
+        for (var i = 0; i < Math.Abs(delta); i++)
+        {
+            await SendAsync(cmd, ct: ct);
+            await Task.Delay(150, ct);   // let the device keep up between steps
+        }
+        await ConnectAsync(ct);          // refresh state for the caller
+    }
+
+    /// <summary>
     /// Sets how long each picture is shown, in seconds (5–30). Command <c>'C' + seconds</c>,
     /// decoded from the vendor's "How long the picture play" box (VA 0x409500).
     /// </summary>

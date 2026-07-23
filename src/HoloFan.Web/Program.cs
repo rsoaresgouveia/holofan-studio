@@ -193,6 +193,8 @@ app.MapGet("/api/fan/status", (FanClient fan) =>
         host = fan.Endpoint.Host,
         port = fan.Endpoint.Port,
         poweredOn = status.PoweredOn,
+        playing = status.Playing,
+        currentIndex = status.CurrentIndex,
         fileCount = status.Files.Count,
         commands = Enum.GetNames<FanCommand>(),
     });
@@ -226,7 +228,20 @@ app.MapGet("/api/fan/playlist", (FanClient fan) =>
 {
     if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
     var status = fan.Status();
-    return Results.Ok(new { files = status.Files, poweredOn = status.PoweredOn });
+    return Results.Ok(new { files = status.Files, poweredOn = status.PoweredOn, currentIndex = status.CurrentIndex, playing = status.Playing });
+});
+
+// Jump to a clip by list index (emulated with Next/Previous — the device has no direct command).
+app.MapPost("/api/fan/play", async (PlayRequest request, FanClient fan, CancellationToken ct) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+    try
+    {
+        await fan.PlayIndexAsync(request.Index, ct);
+        var status = fan.Status();
+        return Results.Ok(new { currentIndex = status.CurrentIndex, files = status.Files });
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 // Set how long each picture is shown, 5–30 s ("How long the picture play").
@@ -342,6 +357,9 @@ public sealed record FanUploadRequest(string JobId, string Name);
 
 /// <summary>Seconds each picture is shown (5–30).</summary>
 public sealed record DurationRequest(int Seconds);
+
+/// <summary>Jump to the clip at this list index.</summary>
+public sealed record PlayRequest(int Index);
 
 // Exposed so integration tests (WebApplicationFactory) can reference the entry point.
 public partial class Program;
