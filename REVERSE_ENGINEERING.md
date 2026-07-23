@@ -66,9 +66,12 @@ offset(bit) = 294 − 42 × bit
 truncated**. The file therefore carries **bits 7..2 = the top 6 bits ⇒ RGB666**.
 Planes appear in the file at offsets `0, 42, 84, 126, 168, 210` = bits `7, 6, 5, 4, 3, 2`.
 
-Within a plane, packing is **LSB-first**: source byte `j` → plane byte `j >> 3`, bit `j & 7`.
-(Read off the unrolled packer at VA 0x40741b: takes 8 consecutive source bytes,
-`and X,1` / `and X,4` / `and X,8` … and ORs them into one output byte.)
+Within a plane, packing is **MSB-first**: source byte `j` → plane byte `j >> 3`, bit
+`7 − (j & 7)`. (Read off the unrolled packer at VA 0x40741b, and — decisively — confirmed
+against the factory demo clips: only MSB-first bit order decodes them to the original
+artwork. LSB-first passes every round-trip test yet scrambles each 8-sample group on the
+hardware, turning any flat colour into concentric **rainbow rings** on the fan. This was a
+real shipped bug, caught only by decoding the vendor's own `.BIN`s — see the note below.)
 
 ### Geometry
 
@@ -91,7 +94,7 @@ for s in range(ANG):
         for bit in range(2, 8):              # bits 7..2 survive
             off = 294 - 42*bit
             if off < SLICE:
-                val |= ((sl[off + (j>>3)] >> (j & 7)) & 1) << bit
+                val |= ((sl[off + (j>>3)] >> (7 - (j & 7))) & 1) << bit
         v[j] = val
     # LED i, BGR interleaved:  B=v[i*3]  G=v[i*3+1]  R=v[i*3+2]
 ```

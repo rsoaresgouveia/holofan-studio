@@ -16,8 +16,10 @@ namespace HoloFan.Device;
 /// Packing rule (read off the unrolled packer at VA 0x40741b): the encoder emits eight
 /// planes at <c>offset(bit) = 294 − 42·bit</c>, then writes only the first 252 bytes — so
 /// bits 1 and 0 fall off the end and the file carries bits 7..2 (RGB666). Within a plane
-/// the packing is LSB-first: source byte <c>j</c> occupies bit <c>j &amp; 7</c> of plane
-/// byte <c>j &gt;&gt; 3</c>.
+/// the packing is <b>MSB-first</b>: source byte <c>j</c> occupies bit <c>7 − (j &amp; 7)</c>
+/// of plane byte <c>j &gt;&gt; 3</c>. (Validated by decoding the factory demo clips: only
+/// MSB-first bit order renders the original artwork; LSB-first scrambles every flat colour
+/// into concentric rainbow rings on the physical fan.)
 /// </summary>
 public static class BinFormat
 {
@@ -42,7 +44,7 @@ public static class BinFormat
             for (var j = 0; j < source.Length; j++)
             {
                 if ((source[j] >> bit & 1) != 0)
-                    destination[planeOffset + (j >> 3)] |= (byte)(1 << (j & 7));
+                    destination[planeOffset + (j >> 3)] |= (byte)(1 << (7 - (j & 7)));
             }
         }
     }
@@ -66,7 +68,7 @@ public static class BinFormat
 
             for (var j = 0; j < destination.Length; j++)
             {
-                if ((slice[planeOffset + (j >> 3)] >> (j & 7) & 1) != 0)
+                if ((slice[planeOffset + (j >> 3)] >> (7 - (j & 7)) & 1) != 0)
                     destination[j] |= (byte)(1 << bit);
             }
         }

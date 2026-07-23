@@ -47,8 +47,8 @@ public class BinFormatTests
         source[9] = 0b1000_0000;               // byte 9, bit 7
         BinFormat.PackSlice(M, source, packed);
 
-        // bit 7 → plane at offset 0; byte 9 → plane byte 1, bit 1 (LSB-first).
-        Assert.Equal(0b0000_0010, packed[0 + 1]);
+        // bit 7 → plane at offset 0; byte 9 → plane byte 1, bit 6 (MSB-first: bit 7 − (9 & 7)).
+        Assert.Equal(0b0100_0000, packed[0 + 1]);
         Assert.Equal(1, packed.Count(b => b != 0));
     }
 
