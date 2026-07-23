@@ -160,10 +160,10 @@ public static class FanProtocol
         }
 
         // Status tail (confirmed live): byte 0 = current clip index (0-based; steps with
-        // Next/Previous), byte 3 = power (1 on / 0 standby), byte 6 = playing (1/0).
+        // Next/Previous), byte 3 = standby flag (0 = running/on, 1 = standby), byte 6 = playing.
         var tail = payload[i..];
         int? currentIndex = tail.Length > 0 && tail[0] < names.Count ? tail[0] : null;
-        bool? poweredOn = tail.Length > 3 ? tail[3] != 0 : null;
+        bool? poweredOn = tail.Length > 3 ? tail[3] == 0 : null;
         bool? playing = tail.Length > 6 ? tail[6] != 0 : null;
         return new FanStatus(names, poweredOn, currentIndex, playing);
     }

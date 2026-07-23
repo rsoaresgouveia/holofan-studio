@@ -127,9 +127,9 @@ public class FanProtocolTests
     }
 
     [Theory]
-    // Status tail observed live: "00 0c 00 <power> 02 01 00 01 …"; byte 3 flips with the Power command.
-    [InlineData("00", false)]
-    [InlineData("01", true)]
+    // Status tail byte 3 is a standby flag: 0 = running/on, 1 = standby.
+    [InlineData("00", true)]
+    [InlineData("01", false)]
     public void Parses_power_state_from_the_status_tail(string powerByte, bool expected)
     {
         var reply = Convert.FromHexString(
@@ -152,13 +152,13 @@ public class FanProtocolTests
             "433045454237433942414133" +           // header
             "00677069" +                           // 00 "gpi"
             "0330d3e3" + "0531bafcc0ea" +          // 2 entries: "0鱼", "1狐狸"
-            "010c00010201010100000000" +           // tail: idx=1, power=1, playing=1
+            "010c00010201010100000000" +           // tail: idx=1, standby-flag=1 (→ off), playing=1
             "433045454244463945354237");           // trailer
 
         var s = FanProtocol.ParseStatus(reply);
         Assert.Equal(2, s.Files.Count);
         Assert.Equal(1, s.CurrentIndex);
-        Assert.True(s.PoweredOn);
+        Assert.False(s.PoweredOn);                 // standby flag set → not running
         Assert.True(s.Playing);
     }
 
