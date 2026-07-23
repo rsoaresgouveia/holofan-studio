@@ -16,12 +16,14 @@ public sealed class JobStore
     private readonly SemaphoreSlim _gate;
     private readonly FfmpegService _ffmpeg;
     private readonly StorageService _storage;
+    private readonly LibraryService _library;
     private readonly ILogger<JobStore> _log;
 
-    public JobStore(FfmpegService ffmpeg, StorageService storage, IOptions<FfmpegOptions> opt, ILogger<JobStore> log)
+    public JobStore(FfmpegService ffmpeg, StorageService storage, LibraryService library, IOptions<FfmpegOptions> opt, ILogger<JobStore> log)
     {
         _ffmpeg = ffmpeg;
         _storage = storage;
+        _library = library;
         _log = log;
         _gate = new SemaphoreSlim(Math.Max(1, opt.Value.MaxConcurrentJobs));
     }
@@ -44,19 +46,19 @@ public sealed class JobStore
     /// sampled into the device's polar grid and bit-plane packed. Copy the result onto the
     /// fan's TF card and it plays with no vendor software involved.
     /// </summary>
-    public ConversionJob EnqueueBin(string inputPath, ConversionOptions options, DeviceModel model, int expectedFrames)
+    public ConversionJob EnqueueBin(string inputPath, ConversionOptions options, DeviceModel model, int expectedFrames, string clipName)
     {
         var job = new ConversionJob { Id = Guid.NewGuid().ToString("N"), OutputExtension = "bin" };
         _jobs[job.Id] = job;
         var outputPath = _storage.OutputPath(job.Id, "bin");
 
-        _ = Task.Run(() => RunBinAsync(job, inputPath, outputPath, options, model, expectedFrames));
+        _ = Task.Run(() => RunBinAsync(job, inputPath, outputPath, options, model, expectedFrames, clipName));
         return job;
     }
 
     private async Task RunBinAsync(
         ConversionJob job, string inputPath, string outputPath,
-        ConversionOptions options, DeviceModel model, int expectedFrames)
+        ConversionOptions options, DeviceModel model, int expectedFrames, string clipName)
     {
         await _gate.WaitAsync();
         try
@@ -77,6 +79,13 @@ public sealed class JobStore
 
             await output.FlushAsync();
             if (frames == 0) throw new InvalidOperationException("No frames were produced.");
+
+            await output.DisposeAsync();   // release the handle before the library copies it
+
+            // Every render joins the persistent library, so the app always holds the bytes it
+            // would need to re-upload — the basis for emulated per-file management on the fan.
+            try { _library.AddFromFile(clipName, outputPath, "generated"); }
+            catch (Exception ex) { _log.LogWarning(ex, "Could not add job {JobId} to the library", job.Id); }
 
             job.Progress = 1.0;
             job.Status = JobStatus.Completed;

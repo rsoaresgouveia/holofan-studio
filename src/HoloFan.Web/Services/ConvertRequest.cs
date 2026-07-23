@@ -22,6 +22,9 @@ public sealed record ConvertRequest
     /// <summary>Target fan model when rendering the native .bin (e.g. "42-F2"). Ignored for MP4.</summary>
     public string DeviceModelId { get; init; } = "42-F2";
 
+    /// <summary>Display name for the clip in the library (from the source filename). Optional.</summary>
+    public string? Name { get; init; }
+
     /// <summary>Builds the core options, taking authoritative source dimensions from a fresh probe.</summary>
     public ConversionOptions ToOptions(int sourceWidth, int sourceHeight) => new()
     {

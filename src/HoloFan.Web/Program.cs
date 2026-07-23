@@ -24,6 +24,7 @@ builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = uploadLimit)
 
 builder.Services.AddSingleton<StorageService>();
 builder.Services.AddSingleton<FfmpegService>();
+builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddSingleton<JobStore>();
 builder.Services.AddSingleton<SecurityService>();
 
@@ -187,7 +188,8 @@ app.MapPost("/api/uploads/{id}/bin", async (string id, ConvertRequest request, S
     var end = options.TrimEnd ?? info.DurationSeconds;
     var expectedFrames = (int)Math.Max(1, (end - start) / Math.Max(0.1, options.Speed) * options.Fps);
 
-    var job = jobs.EnqueueBin(path, options, model, expectedFrames);
+    var clipName = string.IsNullOrWhiteSpace(request.Name) ? "clip" : request.Name.Trim();
+    var job = jobs.EnqueueBin(path, options, model, expectedFrames, clipName);
     return Results.Ok(new { jobId = job.Id, model = model.Id, expectedFrames });
 });
 
@@ -203,6 +205,83 @@ app.MapGet("/api/jobs/{id}", (string id, JobStore jobs) =>
         progress = job.Progress,
         error = job.Error,
     });
+});
+
+// --- Clip library -------------------------------------------------------------
+// A persistent store of every clip's bytes (renders + imports like the factory bins),
+// on the data volume so it survives reboots. The fan can't hand clips back, so this is
+// what lets the app manage what's on the device (and re-upload after a Format).
+
+static object ClipDto(LibraryService.LibraryClip c) => new
+{
+    id = c.Id, name = c.Name, sizeBytes = c.SizeBytes, frameCount = c.FrameCount,
+    source = c.Source, createdAt = c.CreatedAt,
+    sha = c.Sha256.Length >= 12 ? c.Sha256[..12].ToLowerInvariant() : c.Sha256.ToLowerInvariant(),
+};
+
+app.MapGet("/api/library", (LibraryService library) =>
+    Results.Ok(new { clips = library.List().Select(ClipDto) }));
+
+// Import a raw .bin (e.g. a factory demo clip) into the library.
+app.MapPost("/api/library/import", async (HttpRequest req, LibraryService library, CancellationToken ct) =>
+{
+    if (!req.HasFormContentType)
+        return Results.BadRequest(new { error = "Expected a multipart/form-data upload." });
+
+    var form = await req.ReadFormAsync(ct);
+    var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+    if (file is null || file.Length == 0)
+        return Results.BadRequest(new { error = "No file was uploaded." });
+
+    var name = form["name"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(name))
+        name = Path.GetFileNameWithoutExtension(file.FileName);
+
+    try
+    {
+        using var ms = new MemoryStream();
+        await using (var stream = file.OpenReadStream()) await stream.CopyToAsync(ms, ct);
+        var clip = library.Add(name!, ms.ToArray(), "imported");
+        return Results.Ok(ClipDto(clip));
+    }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/library/{id}/rename", (string id, RenameRequest request, LibraryService library) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Name))
+        return Results.BadRequest(new { error = "A name is required." });
+    return library.Rename(id, request.Name)
+        ? Results.Ok(new { renamed = true })
+        : Results.NotFound(new { error = "Unknown clip." });
+});
+
+app.MapDelete("/api/library/{id}", (string id, LibraryService library) =>
+    library.Delete(id) ? Results.Ok(new { deleted = true }) : Results.NotFound(new { error = "Unknown clip." }));
+
+app.MapGet("/api/library/{id}/download", (string id, LibraryService library) =>
+{
+    var clip = library.Get(id);
+    var path = library.PathOf(id);
+    if (clip is null || path is null) return Results.NotFound(new { error = "Unknown clip." });
+    var safe = string.Concat(clip.Name.Split(Path.GetInvalidFileNameChars()));
+    return Results.File(path, "application/octet-stream", $"{(safe.Length == 0 ? "clip" : safe)}.bin");
+});
+
+// Send a library clip to the fan over WiFi.
+app.MapPost("/api/library/{id}/send", async (string id, FanClient fan, LibraryService library, CancellationToken ct) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+    var clip = library.Get(id);
+    var path = library.PathOf(id);
+    if (clip is null || path is null) return Results.NotFound(new { error = "Unknown clip." });
+    try
+    {
+        var bytes = await File.ReadAllBytesAsync(path, ct);
+        await fan.UploadAsync(clip.Name, bytes, ct: ct);
+        return Results.Ok(new { uploaded = clip.Name, bytes = bytes.Length, files = fan.List() });
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 // --- Fan control (WiFi) -------------------------------------------------------
@@ -379,6 +458,8 @@ public sealed record ClockRequest(string Setting, byte Value);
 
 /// <summary>Push a rendered .bin (by job id) to the fan under a chosen clip name.</summary>
 public sealed record FanUploadRequest(string JobId, string Name);
+
+public sealed record RenameRequest(string Name);
 
 /// <summary>Seconds each picture is shown (5–30).</summary>
 public sealed record DurationRequest(int Seconds);

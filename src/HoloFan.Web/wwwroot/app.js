@@ -177,6 +177,7 @@ async function handleFile(file) {
   try {
     const info = await api("/api/uploads", { method: "POST", body: fd });
     state.uploadId = info.uploadId;
+    state.fileName = (file.name || "clip").replace(/\.[^.]+$/, "");   // for the library clip name
     state.srcW = info.width;
     state.srcH = info.height;
     state.duration = info.duration || 0;
@@ -235,6 +236,7 @@ function buildRequest() {
     contrast: parseFloat($("contrast").value),
     saturation: parseFloat($("saturation").value),
     deviceModelId: "42-F2",
+    name: state.fileName || "clip",
   };
 }
 
@@ -290,6 +292,7 @@ function pollJob(jobId, format = "mp4") {
           const canSend = isBin && $("fanDot").classList.contains("on");
           $("sendToFan").classList.toggle("hidden", !canSend);
           $("resultReady").classList.remove("hidden");
+          if (isBin) loadLibrary();   // the render was just added to the library
           resolve();
         } else {
           reject(new Error(job.error || "Conversion failed."));
@@ -494,6 +497,7 @@ function setFanState(connected, label) {
     .forEach((s) => (s.disabled = !connected));
   $("fanStatus").classList.toggle("hidden", !connected);
   if (!connected) $("powerBadge").classList.add("hidden");
+  if (typeof loadLibrary === "function") loadLibrary();   // reflect send-button availability
 }
 
 function setPower(poweredOn) {
@@ -656,6 +660,100 @@ function bindFan() {
   });
 }
 
+// --- Clip library -----------------------------------------------------------
+function fmtSize(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB";
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB";
+  return bytes + " B";
+}
+
+async function loadLibrary() {
+  try { renderLibrary((await api("/api/library")).clips); }
+  catch { /* best-effort */ }
+}
+
+function renderLibrary(clips) {
+  const ul = $("libraryList");
+  $("libraryEmpty").classList.toggle("hidden", clips.length > 0);
+  const online = $("fanDot").classList.contains("on");
+  ul.innerHTML = clips.map((c) => `
+    <li class="lib-item" data-id="${c.id}">
+      <div class="lib-info">
+        <span class="lib-name">${escapeHtml(c.name)}</span>
+        <span class="lib-meta">${c.frameCount} frames · ${fmtSize(c.sizeBytes)} · <span class="src-badge src-${escapeHtml(c.source)}">${escapeHtml(c.source)}</span></span>
+      </div>
+      <div class="lib-actions">
+        <button class="btn-mini lib-send" ${online ? "" : "disabled"} title="${online ? "Send to the fan" : "Connect to the fan first"}">▲ Send</button>
+        <button class="link-btn small lib-rename">rename</button>
+        <a class="link-btn small" href="/api/library/${c.id}/download">download</a>
+        <button class="link-btn small danger lib-delete">delete</button>
+      </div>
+    </li>`).join("");
+}
+
+async function importBin(file) {
+  if (!file) return;
+  toast(`Importing ${file.name}…`);
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("name", file.name.replace(/\.[^.]+$/, ""));
+  try {
+    await api("/api/library/import", { method: "POST", body: fd });
+    toast("Imported to the library.");
+    loadLibrary();
+  } catch (e) { toast(e.message, true); }
+}
+
+function bindLibrary() {
+  $("libImport").addEventListener("click", () => $("libImportInput").click());
+  $("libImportInput").addEventListener("change", (e) => { importBin(e.target.files[0]); e.target.value = ""; });
+
+  $("libraryList").addEventListener("click", async (e) => {
+    const li = e.target.closest(".lib-item");
+    if (!li) return;
+    const id = li.dataset.id;
+    const name = li.querySelector(".lib-name").textContent;
+
+    if (e.target.classList.contains("lib-send")) {
+      const btn = e.target, original = btn.textContent;
+      btn.disabled = true; btn.textContent = "Sending…";
+      try {
+        const r = await api(`/api/library/${id}/send`, { method: "POST" });
+        toast(`Sent "${r.uploaded}" to the fan (${(r.bytes / 1024).toFixed(0)} KB).`);
+        refreshPlaylist();
+      } catch (err) { toast(err.message, true); }
+      finally { btn.disabled = false; btn.textContent = original; }
+    } else if (e.target.classList.contains("lib-rename")) {
+      showModal({
+        title: "Rename clip", message: `Currently “${name}”.`,
+        fields: [{ key: "name", label: "New name", type: "text", placeholder: name }],
+        okLabel: "Rename",
+        onOk: async (v, fail) => {
+          if (!v.name || !v.name.trim()) { fail("Enter a name."); return true; }
+          try {
+            await api(`/api/library/${id}/rename`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: v.name.trim() }),
+            });
+          } catch (err) { fail(err.message); return true; }
+          loadLibrary(); return false;
+        },
+      });
+    } else if (e.target.classList.contains("lib-delete")) {
+      showModal({
+        title: "Delete clip?",
+        message: `Remove “${name}” from the library? This does not touch the fan.`,
+        okLabel: "Delete", danger: true,
+        onOk: async (_v, fail) => {
+          try { await api(`/api/library/${id}`, { method: "DELETE" }); }
+          catch (err) { fail(err.message); return true; }
+          loadLibrary(); return false;
+        },
+      });
+    }
+  });
+}
+
 // --- Version & changelog ----------------------------------------------------
 // Tiny, safe Markdown → HTML: escape everything first, then a handful of block rules.
 // Enough for our CHANGELOG.md (headings, lists, bold, links, code) without a library.
@@ -721,5 +819,7 @@ async function loadVersion() {
 loadPresets();
 bindControls();
 bindFan();
+bindLibrary();
 refreshFan();
+loadLibrary();
 loadVersion();

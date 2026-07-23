@@ -9,6 +9,18 @@ The format is loosely [Keep a Changelog](https://keepachangelog.com/); versions 
 `<Version>` in `src/HoloFan.Web/HoloFan.Web.csproj` and adds an entry here, in the same
 commit.**
 
+## [1.7.0] — 2026-07-23
+
+### Added
+- **Persistent clip library.** Every clip you render is now kept in a library on the data
+  volume (`/data/library/`, survives reboots), and you can **import** existing `.bin` files
+  (e.g. the factory demo clips). Full CRUD — rename, delete, download, and send any clip
+  straight to the fan. This is the groundwork for managing what's on the fan without wiping
+  everything: the app holds each clip's bytes, so it can re-upload survivors after a format
+  (the fan itself has no per-file delete and can't send clips back — see REVERSE_ENGINEERING.md).
+- New endpoints: `GET /api/library`, `POST /api/library/import`, `POST /api/library/{id}/rename`,
+  `DELETE /api/library/{id}`, `GET /api/library/{id}/download`, `POST /api/library/{id}/send`.
+
 ## [1.6.0] — 2026-07-23
 
 ### Added

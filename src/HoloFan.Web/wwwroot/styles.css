@@ -307,6 +307,26 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
   background: linear-gradient(135deg, var(--danger), #b91c3c); color: #fff; box-shadow: none;
 }
 
+/* Clip library */
+.library-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lib-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-solid);
+}
+.lib-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lib-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-meta { font-size: 12px; color: var(--muted); }
+.lib-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.src-badge {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding: 1px 6px;
+  border-radius: 999px; border: 1px solid var(--line);
+}
+.src-factory { color: var(--accent-2); border-color: var(--accent-2); }
+.src-generated { color: var(--accent); border-color: var(--accent); }
+.src-imported { color: var(--muted); }
+.link-btn.danger { color: var(--danger); }
+.link-btn.danger:hover { color: #ff9db0; }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);

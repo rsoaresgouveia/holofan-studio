@@ -203,6 +203,24 @@
           </div>
         </details>
     </section>
+
+    <!-- Clip library -->
+    <section class="control-group span library-panel">
+      <div class="fan-head">
+        <h3>Clip library <span class="muted small">— saved on the device, survives reboots</span></h3>
+        <div class="fan-conn">
+          <input type="file" id="libImportInput" accept=".bin" hidden />
+          <button type="button" id="libImport" class="btn-mini">＋ Import .bin</button>
+        </div>
+      </div>
+      <p class="muted small">
+        Every clip you render lands here automatically. Import your factory <code>.bin</code> files once
+        to keep a backup, then send any clip to the fan over WiFi.
+        <span id="libSpaceNote"></span>
+      </p>
+      <ul id="libraryList" class="library-list"></ul>
+      <p id="libraryEmpty" class="muted small hidden">No clips yet — render a video or import a <code>.bin</code>.</p>
+    </section>
   </main>
 
   <!-- Confirmation / passphrase modal -->
