@@ -232,6 +232,35 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .send-fan { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
 .send-fan input { width: 130px; margin: 0; }
 
+/* Fan status: power badge, playlist, duration */
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600;
+  border: 1px solid var(--line);
+}
+.badge.on { color: #05221d; background: var(--accent); border-color: transparent; }
+.badge.off { color: var(--muted); }
+
+.fan-status { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.playlist-head { display: flex; justify-content: space-between; align-items: baseline; }
+.playlist {
+  list-style: none; margin: 10px 0; padding: 0; max-height: 190px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel-solid);
+}
+.playlist li {
+  padding: 8px 12px; font-size: 13px; display: flex; gap: 10px; align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.playlist li:last-child { border-bottom: none; }
+.playlist li .idx { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.6em; }
+.playlist li.empty { color: var(--muted); justify-content: center; }
+.dur-row { align-items: center; gap: 12px; }
+.dur-apply { flex: 0 0 auto; margin-bottom: 0; padding: 7px 16px; }
+
+.modal-error {
+  margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 13px;
+  color: var(--danger); background: #fb71851a; border: 1px solid #7f1d2e;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed; inset: 0; background: #000a; backdrop-filter: blur(3px);

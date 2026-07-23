@@ -176,5 +176,20 @@ public sealed class FanClient : IAsyncDisposable
     public IReadOnlyList<string> List()
         => _handshakeReply is null ? Array.Empty<string>() : FanProtocol.ParsePlaylist(_handshakeReply);
 
+    /// <summary>Clip list and readable state (power) from the last connect's reply.</summary>
+    public FanStatus Status()
+        => _handshakeReply is null ? new FanStatus(Array.Empty<string>(), null) : FanProtocol.ParseStatus(_handshakeReply);
+
+    /// <summary>
+    /// Sets how long each picture is shown, in seconds (5–30). Command <c>'C' + seconds</c>,
+    /// decoded from the vendor's "How long the picture play" box (VA 0x409500).
+    /// </summary>
+    public Task SetDisplaySecondsAsync(int seconds, CancellationToken ct = default)
+    {
+        if (seconds is < 5 or > 30)
+            throw new ArgumentOutOfRangeException(nameof(seconds), "Display seconds must be 5–30.");
+        return SendPayloadAsync(new byte[] { (byte)'C', (byte)seconds }, ct);
+    }
+
     public async ValueTask DisposeAsync() => await DisconnectAsync();
 }

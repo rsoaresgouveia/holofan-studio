@@ -124,13 +124,21 @@ public static class FanProtocol
     /// file count. Confirmed against a live 42-F2 (12 demo clips). Pure and unit-tested.
     /// </summary>
     public static IReadOnlyList<string> ParsePlaylist(ReadOnlySpan<byte> reply)
+        => ParseStatus(reply).Files;
+
+    /// <summary>
+    /// Parses the device's handshake reply into the clip list and readable state. The reply is
+    /// <c>header + 00"gpi" + &lt;len&gt;&lt;name&gt; entries + status tail + trailer</c>; in the
+    /// tail, byte 3 tracks power (1 = on, 0 = standby) — confirmed live by toggling Power.
+    /// </summary>
+    public static FanStatus ParseStatus(ReadOnlySpan<byte> reply)
     {
         var names = new List<string>();
         var header = System.Text.Encoding.ASCII.GetBytes(HeaderMagic);
         var trailer = System.Text.Encoding.ASCII.GetBytes(TrailerMagic);
 
         var start = IndexOf(reply, header);
-        if (start < 0) return names;
+        if (start < 0) return new FanStatus(names, null);
         start += header.Length;
         var end = IndexOf(reply.Slice(start), trailer);
         var payload = end < 0 ? reply.Slice(start) : reply.Slice(start, end);
@@ -150,7 +158,10 @@ public static class FanProtocol
             names.Add(Gbk.GetString(nameBytes));
             i += 1 + len;
         }
-        return names;
+
+        var tail = payload[i..];
+        bool? poweredOn = tail.Length > 3 ? tail[3] != 0 : null;
+        return new FanStatus(names, poweredOn);
     }
 
     // A name byte is printable ASCII or a GBK lead/continuation byte (>= 0x81); the status tail
@@ -215,6 +226,9 @@ public enum FanCommand : byte
     /// <summary>"Format Disk" — <b>erases every clip on the card</b> (ID 1038). Destructive.</summary>
     FormatDisk = (byte)'j',
 }
+
+/// <summary>Readable device state parsed from the handshake/playlist reply.</summary>
+public sealed record FanStatus(IReadOnlyList<string> Files, bool? PoweredOn);
 
 /// <summary>Which dial the 5-byte <c>'b'</c> command targets (clock feature).</summary>
 public enum ClockSetting : byte

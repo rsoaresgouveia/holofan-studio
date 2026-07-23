@@ -184,13 +184,19 @@ app.MapGet("/api/jobs/{id}", (string id, JobStore jobs) =>
 // Every button the vendor software offers, spoken in the fan's own protocol.
 // Join the fan's open "3DCircle_…" AP first.
 
-app.MapGet("/api/fan/status", (FanClient fan) => Results.Ok(new
+app.MapGet("/api/fan/status", (FanClient fan) =>
 {
-    connected = fan.IsConnected,
-    host = fan.Endpoint.Host,
-    port = fan.Endpoint.Port,
-    commands = Enum.GetNames<FanCommand>(),
-}));
+    var status = fan.Status();
+    return Results.Ok(new
+    {
+        connected = fan.IsConnected,
+        host = fan.Endpoint.Host,
+        port = fan.Endpoint.Port,
+        poweredOn = status.PoweredOn,
+        fileCount = status.Files.Count,
+        commands = Enum.GetNames<FanCommand>(),
+    });
+});
 
 app.MapPost("/api/fan/connect", async (FanClient fan, CancellationToken ct) =>
 {
@@ -215,11 +221,24 @@ app.MapPost("/api/fan/disconnect", async (FanClient fan) =>
     return Results.Ok(new { connected = false });
 });
 
-// The clips currently on the fan's card (from the playlist it sends at connect).
+// The clips on the fan's card plus readable state (from the playlist it sends at connect).
 app.MapGet("/api/fan/playlist", (FanClient fan) =>
 {
     if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
-    return Results.Ok(new { files = fan.List() });
+    var status = fan.Status();
+    return Results.Ok(new { files = status.Files, poweredOn = status.PoweredOn });
+});
+
+// Set how long each picture is shown, 5–30 s ("How long the picture play").
+app.MapPost("/api/fan/duration", async (DurationRequest request, FanClient fan, CancellationToken ct) =>
+{
+    if (!fan.IsConnected) return Results.BadRequest(new { error = "Connect to the fan first." });
+    try
+    {
+        await fan.SetDisplaySecondsAsync(request.Seconds, ct);
+        return Results.Ok(new { seconds = request.Seconds });
+    }
+    catch (Exception ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 app.MapPost("/api/fan/command", async (FanCommandRequest request, FanClient fan, SecurityService security, CancellationToken ct) =>
@@ -320,6 +339,9 @@ public sealed record ClockRequest(string Setting, byte Value);
 
 /// <summary>Push a rendered .bin (by job id) to the fan under a chosen clip name.</summary>
 public sealed record FanUploadRequest(string JobId, string Name);
+
+/// <summary>Seconds each picture is shown (5–30).</summary>
+public sealed record DurationRequest(int Seconds);
 
 // Exposed so integration tests (WebApplicationFactory) can reference the entry point.
 public partial class Program;

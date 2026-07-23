@@ -143,6 +143,7 @@
           <h3>Fan remote <span class="muted small">— join the fan's “3DCircle_…” WiFi first</span></h3>
           <div class="fan-conn">
             <button type="button" id="managePass" class="link-btn small" title="Admin passphrase for destructive actions">🔒 passphrase</button>
+            <span id="powerBadge" class="badge hidden"></span>
             <span id="fanDot" class="dot"></span>
             <span id="fanState" class="small muted">Unconnected</span>
             <button type="button" id="fanConnect" class="btn-mini">Connect</button>
@@ -163,6 +164,22 @@
           <button type="button" class="fan-btn" data-cmd="WifiConfig">📶 Wi-Fi config</button>
           <button type="button" class="fan-btn danger" data-cmd="ClearCache" data-destructive="1">🧹 Clear cache</button>
           <button type="button" class="fan-btn danger" data-cmd="FormatDisk" data-destructive="1">☠ Format disk</button>
+        </div>
+
+        <div id="fanStatus" class="fan-status hidden">
+          <div class="playlist-head">
+            <strong>Clips on the card <span id="clipCount" class="muted"></span></strong>
+            <button type="button" id="refreshPlaylist" class="link-btn small">↻ refresh</button>
+          </div>
+          <ul id="playlist" class="playlist"></ul>
+          <p class="muted small">Use ⏮ / ⏭ to move through the list — the fan has no “jump to clip” command.</p>
+
+          <label>Picture duration <span class="val" id="durVal">10 s</span>
+            <div class="row dur-row">
+              <input type="range" id="duration" min="5" max="30" value="10" />
+              <button type="button" id="applyDuration" class="btn-mini dur-apply">Apply</button>
+            </div>
+          </label>
         </div>
 
         <details class="clock-block">
@@ -191,6 +208,7 @@
       <h3 id="modalTitle"></h3>
       <p id="modalMsg" class="muted small"></p>
       <div id="modalFields"></div>
+      <p id="modalError" class="modal-error hidden"></p>
       <div class="modal-actions">
         <button type="button" id="modalCancel" class="btn-secondary">Cancel</button>
         <button type="button" id="modalOk" class="btn-primary">Confirm</button>

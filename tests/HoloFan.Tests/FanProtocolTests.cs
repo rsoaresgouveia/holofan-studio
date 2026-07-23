@@ -126,6 +126,24 @@ public class FanProtocolTests
         Assert.True(FanProtocol.IsFramedReply(pkt));
     }
 
+    [Theory]
+    // Status tail observed live: "00 0c 00 <power> 02 01 00 01 …"; byte 3 flips with the Power command.
+    [InlineData("00", false)]
+    [InlineData("01", true)]
+    public void Parses_power_state_from_the_status_tail(string powerByte, bool expected)
+    {
+        var reply = Convert.FromHexString(
+            "433045454237433942414133" +               // header
+            "00677069" +                               // 00 "gpi"
+            "0330d3e3" +                               // one entry "0鱼"
+            "000c00" + powerByte + "0201000100000000" + // status tail (byte 3 = power)
+            "433045454244463945354237");               // trailer
+
+        var status = FanProtocol.ParseStatus(reply);
+        Assert.Single(status.Files);
+        Assert.Equal(expected, status.PoweredOn);
+    }
+
     [Fact]
     public void Playlist_parse_is_safe_on_garbage()
     {

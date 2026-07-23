@@ -384,18 +384,27 @@ function showModal({ title, message, fields, okLabel, danger, onOk }) {
   const ok = $("modalOk");
   ok.textContent = okLabel || "Confirm";
   ok.classList.toggle("danger-btn", !!danger);
+  const err = $("modalError");
+  err.classList.add("hidden");
+  err.textContent = "";
   $("modal").classList.remove("hidden");
   const first = box.querySelector("input");
   if (first) setTimeout(() => first.focus(), 40);
 
+  // Errors show INSIDE the modal (not as a toast hidden behind it).
+  const fail = (msg) => { err.textContent = msg; err.classList.remove("hidden"); };
   const close = () => { $("modal").classList.add("hidden"); ok.onclick = null; $("modalCancel").onclick = null; };
   $("modalCancel").onclick = close;
   ok.onclick = async () => {
+    err.classList.add("hidden");
     const values = {};
     Object.entries(inputs).forEach(([k, el]) => (values[k] = el.value));
-    const keepOpen = await onOk(values);
+    const keepOpen = await onOk(values, fail);
     if (!keepOpen) close();
   };
+  // Enter submits.
+  box.querySelectorAll("input").forEach((el) =>
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") ok.click(); }));
 }
 
 async function confirmDestructive(cmd, label) {
@@ -411,8 +420,8 @@ async function confirmDestructive(cmd, label) {
         { key: "confirm", label: "Confirm passphrase" },
       ],
       okLabel: "Set passphrase",
-      onOk: async (v) => {
-        if (!v.new || v.new !== v.confirm) { toast("Passphrases don't match.", true); return true; }
+      onOk: async (v, fail) => {
+        if (!v.new || v.new !== v.confirm) { fail("Passphrases don't match."); return true; }
         try {
           await api("/api/security/passphrase", {
             method: "POST", headers: { "Content-Type": "application/json" },
@@ -420,7 +429,7 @@ async function confirmDestructive(cmd, label) {
           });
           toast("Passphrase set. Click the action again to confirm.");
           return false;
-        } catch (e) { toast(e.message, true); return true; }
+        } catch (e) { fail(e.message); return true; }
       },
     });
     return;
@@ -434,15 +443,16 @@ async function confirmDestructive(cmd, label) {
     fields: [{ key: "pass", label: "Admin passphrase" }],
     okLabel: `Yes, ${label}`,
     danger: true,
-    onOk: async (v) => {
+    onOk: async (v, fail) => {
       try {
         await api("/api/fan/command", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ command: cmd, confirmDestructive: true, passphrase: v.pass }),
         });
         toast(`Sent: ${label}`);
+        refreshPlaylist();
         return false;
-      } catch (e) { toast(e.message, true); return true; }  // wrong passphrase → keep open
+      } catch (e) { fail(e.message); return true; }  // wrong passphrase → keep open (error in modal)
     },
   });
 }
@@ -460,8 +470,8 @@ async function managePassphrase() {
       { key: "confirm", label: "Confirm passphrase" },
     ],
     okLabel: "Save",
-    onOk: async (v) => {
-      if (!v.new || v.new !== v.confirm) { toast("Passphrases don't match.", true); return true; }
+    onOk: async (v, fail) => {
+      if (!v.new || v.new !== v.confirm) { fail("Passphrases don't match."); return true; }
       try {
         await api("/api/security/passphrase", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -469,7 +479,7 @@ async function managePassphrase() {
         });
         toast("Passphrase saved.");
         return false;
-      } catch (e) { toast(e.message, true); return true; }
+      } catch (e) { fail(e.message); return true; }
     },
   });
 }
@@ -480,14 +490,60 @@ function setFanState(connected, label) {
   $("fanState").textContent = label ?? (connected ? "Connected" : "Unconnected");
   $("fanConnect").textContent = connected ? "Disconnect" : "Connect";
   document.querySelectorAll(".fan-btn").forEach((b) => (b.disabled = !connected));
-  document.querySelectorAll("#clockEnabled, #clockNeedle, #clockDial")
+  document.querySelectorAll("#clockEnabled, #clockNeedle, #clockDial, #duration, #applyDuration")
     .forEach((s) => (s.disabled = !connected));
+  $("fanStatus").classList.toggle("hidden", !connected);
+  if (!connected) $("powerBadge").classList.add("hidden");
+}
+
+function setPower(poweredOn) {
+  const b = $("powerBadge");
+  if (poweredOn === null || poweredOn === undefined) { b.classList.add("hidden"); return; }
+  b.classList.remove("hidden");
+  b.classList.toggle("on", poweredOn);
+  b.classList.toggle("off", !poweredOn);
+  b.textContent = poweredOn ? "⏻ On" : "⏻ Standby";
+}
+
+function renderPlaylist(files, poweredOn) {
+  setPower(poweredOn);
+  $("clipCount").textContent = files && files.length ? `(${files.length})` : "";
+  const ul = $("playlist");
+  if (!files || !files.length) {
+    ul.innerHTML = `<li class="empty">no clips</li>`;
+    return;
+  }
+  ul.innerHTML = files
+    .map((f, i) => `<li><span class="idx">${i + 1}</span><span>${escapeHtml(f)}</span></li>`)
+    .join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Passive render from the server's cached state (connect-time reply).
+async function loadPlaylist() {
+  if (!$("fanDot").classList.contains("on")) return;
+  try {
+    const p = await api("/api/fan/playlist");
+    renderPlaylist(p.files, p.poweredOn);
+  } catch { /* transient */ }
+}
+
+// Reconnect first so power/list reflect the current device state, then render.
+async function refreshPlaylist() {
+  if (!$("fanDot").classList.contains("on")) return;
+  try { await api("/api/fan/connect", { method: "POST" }); } catch { /* keep going */ }
+  await loadPlaylist();
 }
 
 async function refreshFan() {
   try {
     const s = await api("/api/fan/status");
     setFanState(s.connected);
+    if (s.connected) { setPower(s.poweredOn); loadPlaylist(); }
   } catch { setFanState(false); }
 }
 
@@ -505,6 +561,7 @@ function bindFan() {
         const r = await api("/api/fan/connect", { method: "POST" });
         setFanState(true);
         toast(`Connected to the fan at ${r.host}:${r.port}.`);
+        loadPlaylist();
       }
     } catch (e) {
       setFanState(false);
@@ -524,11 +581,24 @@ function bindFan() {
           body: JSON.stringify({ command: cmd, confirmDestructive: false }),
         });
         toast(`Sent: ${btn.textContent.trim()}`);
+        if (cmd === "Power") refreshPlaylist();   // power state changed → refresh badge
       } catch (e) { toast(e.message, true); }
     });
   });
 
   $("managePass").addEventListener("click", managePassphrase);
+  $("refreshPlaylist").addEventListener("click", refreshPlaylist);
+
+  $("duration").addEventListener("input", () => $("durVal").textContent = `${$("duration").value} s`);
+  $("applyDuration").addEventListener("click", async () => {
+    try {
+      const r = await api("/api/fan/duration", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seconds: parseInt($("duration").value, 10) }),
+      });
+      toast(`Picture duration set to ${r.seconds}s.`);
+    } catch (e) { toast(e.message, true); }
+  });
 
   $("sendFanBtn").addEventListener("click", async () => {
     if (!state.lastBinJob) return;
