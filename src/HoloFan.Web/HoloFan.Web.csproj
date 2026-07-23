@@ -9,6 +9,16 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Bumped on every change that goes to git; mirrored by the top entry in CHANGELOG.md. -->
+    <Version>1.6.0</Version>
   </PropertyGroup>
+
+  <!-- Ship the changelog next to the app so /api/version can serve it at runtime. -->
+  <ItemGroup>
+    <Content Include="..\..\CHANGELOG.md" Link="CHANGELOG.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

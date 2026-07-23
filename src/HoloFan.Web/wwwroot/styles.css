@@ -42,6 +42,13 @@ body {
 .brand p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .ghost-link { color: var(--muted); text-decoration: none; font-size: 13px; }
 .ghost-link:hover { color: var(--accent); }
+.topbar-meta { display: flex; align-items: center; gap: 14px; }
+.version-badge {
+  font: inherit; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--muted); background: var(--panel-solid); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 11px; cursor: pointer; transition: color .15s, border-color .15s;
+}
+.version-badge:hover { color: var(--accent); border-color: var(--accent); }
 
 main { max-width: 1080px; margin: 0 auto; padding: 28px; }
 
@@ -280,6 +287,21 @@ input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px;
 .modal-box label { display: block; margin: 12px 0 0; }
 .modal-box input { width: 100%; margin-top: 6px; padding: 10px; background: var(--bg);
   color: var(--text); border: 1px solid var(--line); border-radius: 9px; font: inherit; }
+.modal-wide { width: min(640px, 94vw); }
+.changelog-body {
+  max-height: 60vh; overflow-y: auto; margin-top: 10px; padding-right: 8px;
+  font-size: 14px; line-height: 1.55;
+}
+.changelog-body h2 { font-size: 15px; margin: 18px 0 4px; color: var(--accent); }
+.changelog-body h3 { font-size: 14px; margin: 14px 0 4px; }
+.changelog-body h4 { font-size: 13px; margin: 10px 0 2px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .5px; }
+.changelog-body ul { margin: 4px 0 10px; padding-left: 20px; }
+.changelog-body li { margin: 3px 0; }
+.changelog-body p { margin: 6px 0; color: var(--muted); }
+.changelog-body code { background: var(--bg); border: 1px solid var(--line);
+  border-radius: 5px; padding: 1px 5px; font-size: 12px; }
+.changelog-body a { color: var(--accent); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .modal-box .btn-primary.danger-btn {
   background: linear-gradient(135deg, var(--danger), #b91c3c); color: #fff; box-shadow: none;

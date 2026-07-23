@@ -656,7 +656,70 @@ function bindFan() {
   });
 }
 
+// --- Version & changelog ----------------------------------------------------
+// Tiny, safe Markdown → HTML: escape everything first, then a handful of block rules.
+// Enough for our CHANGELOG.md (headings, lists, bold, links, code) without a library.
+function renderMarkdown(md) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) =>
+    esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  const out = [];
+  let inList = false;
+  let para = [];                            // buffer wrapped prose lines into one paragraph
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  const flushPara = () => {
+    if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
+  };
+  for (const raw of md.split("\n")) {
+    const line = raw.trimEnd();
+    let m;
+    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
+      flushPara(); closeList();
+      const lvl = m[1].length + 1;         // # → h2, ## → h3, ### → h4
+      out.push(`<h${lvl}>${inline(m[2])}</h${lvl}>`);
+    } else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+      flushPara();
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(m[1])}</li>`);
+    } else if (line === "") {
+      flushPara(); closeList();
+    } else if (/^\[[^\]]+\]:\s*https?:/.test(line)) {
+      // reference-style link definition — skip
+    } else {
+      closeList();
+      para.push(line);                     // accumulate; flush on blank/heading/list
+    }
+  }
+  flushPara(); closeList();
+  return out.join("\n");
+}
+
+async function loadVersion() {
+  try {
+    const v = await api("/api/version");
+    const badge = $("versionBadge");
+    badge.textContent = `v${v.version} · ${v.commitShort}`;
+    badge.hidden = false;
+
+    const built = v.builtAt ? new Date(v.builtAt) : null;
+    const builtStr = built && !isNaN(built) ? built.toLocaleString() : "local build";
+    $("changelogBuild").textContent =
+      `Running v${v.version} · commit ${v.commitShort} · built ${builtStr}`;
+    $("changelogBody").innerHTML = renderMarkdown(v.changelog || "No changelog available.");
+
+    const modal = $("changelogModal");
+    badge.addEventListener("click", () => modal.classList.remove("hidden"));
+    $("changelogClose").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.add("hidden"); });
+  } catch { /* version is best-effort; never block the app */ }
+}
+
 loadPresets();
 bindControls();
 bindFan();
 refreshFan();
+loadVersion();

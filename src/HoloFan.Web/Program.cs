@@ -1,3 +1,4 @@
+using System.Reflection;
 using HoloFan.Core;
 using HoloFan.Device;
 using HoloFan.Web.Services;
@@ -46,6 +47,30 @@ app.MapGet("/api/presets", () => Results.Ok(FanPreset.Catalog));
 
 // Health check for Docker.
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
+
+// Running version + build identity, so the UI can show which build a device is on (and
+// whether a Raspberry Pi has pulled the latest image). Commit/build-time come from env
+// vars the Docker image bakes in at build; version is the assembly's, from the csproj.
+app.MapGet("/api/version", () =>
+{
+    var informational = typeof(Program).Assembly
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    var version = (informational ?? "0.0.0").Split('+')[0];   // drop SourceLink +<sha> suffix
+    var commit = Environment.GetEnvironmentVariable("HOLOFAN_COMMIT") is { Length: > 0 } c ? c : "dev";
+    var builtAt = Environment.GetEnvironmentVariable("HOLOFAN_BUILT_AT") ?? "";
+
+    var changelogPath = Path.Combine(AppContext.BaseDirectory, "CHANGELOG.md");
+    var changelog = File.Exists(changelogPath) ? File.ReadAllText(changelogPath) : "";
+
+    return Results.Ok(new
+    {
+        version,
+        commit,
+        commitShort = commit.Length >= 7 ? commit[..7] : commit,
+        builtAt,
+        changelog,
+    });
+});
 
 // Upload a source video: stores it and returns probe metadata.
 app.MapPost("/api/uploads", async (HttpRequest req, StorageService storage, FfmpegService ffmpeg, CancellationToken ct) =>

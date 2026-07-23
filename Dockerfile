@@ -26,6 +26,12 @@ RUN apt-get update \
 
 COPY --from=build /app ./
 
+# Build identity (passed by CI) so /api/version can report exactly which commit is running.
+ARG GIT_COMMIT=dev
+ARG BUILD_DATE=""
+ENV HOLOFAN_COMMIT=$GIT_COMMIT \
+    HOLOFAN_BUILT_AT=$BUILD_DATE
+
 # Rendered files live on a volume so they survive container restarts.
 ENV HOLOFAN_DATA=/data \
     ASPNETCORE_URLS=http://+:8080 \

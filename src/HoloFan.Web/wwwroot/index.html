@@ -16,7 +16,10 @@
         <p>Turn any video into a clip your LED “hologram” fan can play.</p>
       </div>
     </div>
-    <a class="ghost-link" href="https://github.com/rsoaresgouveia" target="_blank" rel="noopener">source</a>
+    <div class="topbar-meta">
+      <button type="button" id="versionBadge" class="version-badge" title="Show changelog" hidden></button>
+      <a class="ghost-link" href="https://github.com/rsoaresgouveia" target="_blank" rel="noopener">source</a>
+    </div>
   </header>
 
   <main>
@@ -212,6 +215,18 @@
       <div class="modal-actions">
         <button type="button" id="modalCancel" class="btn-secondary">Cancel</button>
         <button type="button" id="modalOk" class="btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Changelog / version modal -->
+  <div id="changelogModal" class="modal-overlay hidden">
+    <div class="modal-box modal-wide">
+      <h3>What's new</h3>
+      <p id="changelogBuild" class="muted small"></p>
+      <div id="changelogBody" class="changelog-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="changelogClose" class="btn-primary">Close</button>
       </div>
     </div>
   </div>
